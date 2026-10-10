@@ -1,22 +1,24 @@
 import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 
-// Record before dispatch: restart never repeats an already accepted PC action.
-// A command interrupted by a crash must be explicitly sent again by the user.
-export function cursorStore(path, botId, ownerId) {
-  const identity = `${botId}:${ownerId}`;
-  return {
-    read() {
-      try {
-        const data = JSON.parse(readFileSync(path, 'utf8'));
-        return data.identity === identity && Number.isSafeInteger(data.offset) ? data.offset : undefined;
-      } catch (error) {
-        if (error.code === 'ENOENT') return undefined;
-        throw new Error('Telegram cursor file could not be read. Check it before restarting.');
-      }
-    },
-    write(offset) {
-      writeFileSync(`${path}.tmp`, JSON.stringify({ identity, offset }), { mode: 0o600 });
-      renameSync(`${path}.tmp`, path);
-    },
+// Spectrum delivers messages at least once; retain the last 1,000 accepted ids.
+export function messageStore(path, identity) {
+  let ids = new Set();
+  try {
+    const data = JSON.parse(readFileSync(path, 'utf8'));
+    if (data.identity === identity) {
+      if (!Array.isArray(data.ids) || data.ids.some(id => typeof id !== 'string')) throw new Error('Invalid message ids');
+      ids = new Set(data.ids);
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw new Error('Telegram message state could not be read. Check it before restarting.');
+  }
+  return id => {
+    if (ids.has(id)) return false;
+    const next = new Set(ids); next.add(id);
+    if (next.size > 1000) next.delete(next.values().next().value);
+    writeFileSync(`${path}.tmp`, JSON.stringify({ identity, ids: [...next] }), { mode: 0o600 });
+    renameSync(`${path}.tmp`, path);
+    ids = next;
+    return true;
   };
 }

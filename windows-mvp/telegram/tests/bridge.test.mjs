@@ -1,11 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Bridge } from '../bridge.mjs';
-import { createSpeech, createTransport } from '../photon.mjs';
-import { cursorStore } from '../state.mjs';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { createSpeech } from '../photon.mjs';
 
 function setup(extra = {}) {
   const texts = [], commands = [], audio = [], logs = [];
@@ -62,23 +58,7 @@ test('reply text survives OpenAI speech failures and audio can be disabled', asy
   assert.deepEqual(audio[0], new Uint8Array([1, 2]));
 });
 
-test('Photons published SDK sends valid text and multipart MP3 requests', async () => {
-  const calls = [];
-  const transport = createTransport('test-token', async request => {
-    calls.push(request);
-    return Response.json({ ok: true, result: { message_id: 1, date: 1000,
-      chat: { id: 42, type: 'private' } } });
-  });
-  await transport.text('42', 'Hello');
-  assert.equal(new URL(calls[0].url).pathname, '/bottest-token/sendMessage');
-  assert.deepEqual(await calls[0].json(), { chat_id: '42', text: 'Hello' });
-  await transport.audio('42', new Uint8Array([73, 68, 51]));
-  assert.match(calls[1].headers.get('content-type'), /^multipart\/form-data; boundary=/);
-  const form = await calls[1].formData();
-  assert.equal(form.get('audio'), 'attach://speech');
-  assert.equal(form.get('speech').name, 'jarvis.mp3');
-  assert.deepEqual(new Uint8Array(await form.get('speech').arrayBuffer()), new Uint8Array([73, 68, 51]));
-});
+
 
 test('OpenAI speech returns MP3 bytes and limits the spoken length', async () => {
   let options;
@@ -96,29 +76,9 @@ test('OpenAI speech returns MP3 bytes and limits the spoken length', async () =>
   assert.equal(createSpeech({}), undefined);
 });
 
-test('Photons published SDK polls message updates with the supplied cursor', async () => {
-  const transport = createTransport('test-token', async request => {
-    assert.equal(new URL(request.url).pathname, '/bottest-token/getUpdates');
-    assert.deepEqual(await request.json(), { offset: 123, timeout: 25, allowed_updates: ['message'] });
-    return Response.json({ ok: true, result: [update('hello', 123)] });
-  });
-  assert.equal((await transport.poll(123))[0].update_id, 123);
-});
 
-test('cursor survives restart and is scoped to the bot and owner', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'jarvis-test-'));
-  try {
-    const path = join(dir, 'cursor.json');
-    const cursor = cursorStore(path, 123, '42');
-    assert.equal(cursor.read(), undefined);
-    cursor.write(501);
-    assert.equal(cursorStore(path, 123, '42').read(), 501);
-    assert.equal(cursorStore(path, 456, '42').read(), undefined);
-    assert.equal(cursorStore(path, 123, '99').read(), undefined);
-    writeFileSync(path, 'broken');
-    assert.throws(() => cursor.read(), /could not be read/);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
-});
+
+
 
 test('queue stays bounded without blocking denial or reset', async () => {
   const { bridge, commands, texts } = setup();

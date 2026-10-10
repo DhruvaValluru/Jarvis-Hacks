@@ -13,10 +13,12 @@ The first voice command downloads the speech model (about 150 MB). With no API k
 
 ## Telegram + OpenAI
 
-Control this PC from a private Telegram chat using Photon's Telegram SDK.
+Control this PC from a private Telegram chat using Photon's Spectrum runtime.
 Replies are text plus optional OpenAI audio. Run `setup-telegram.bat`,
 configure your bot token and owner ID, then start `jarvis-telegram.bat`.
-See [TELEGRAM.md](TELEGRAM.md) for bot creation, pairing, approvals and audio setup.
+See [TELEGRAM.md](TELEGRAM.md) for Photon credentials, bot creation, pairing and audio setup.
+A voice service from another repo can handle incoming voice notes and spoken replies;
+its interface is defined in [VOICE_API.md](VOICE_API.md).
 
 ## Things to try
 

@@ -1,95 +1,102 @@
-# Control the Windows MVP from Telegram
+# Jarvis through Photon Spectrum and Telegram
 
-Send a private Telegram message to your Jarvis bot. The Windows PC runs the
-command and sends a text reply, plus an MP3 when OpenAI is configured.
-Commands run one at a time in the logged-in Windows user session.
+Telegram text or voice note -> Photon Spectrum -> the Windows Jarvis worker ->
+Telegram text and an optional AI-generated spoken reply. Keep the Windows PC
+awake and logged in while the bridge runs.
 
-## Setup on your Windows PC
+## Windows setup
 
-1. Check out `Saatvik-Branch` and run `windows-mvp\setup.bat` for the Python MVP.
-2. Install **Node.js 22 or newer** from https://nodejs.org. Run
-   `windows-mvp\setup-telegram.bat` to install the Telegram dependencies.
-3. In Telegram, message the official **@BotFather**, send `/newbot`, and follow
-   its prompts. Use a new, dedicated bot; do not reuse a bot configured with a
-   webhook or another running bridge. Copy the bot token into
-   `windows-mvp\.env` as `TELEGRAM_BOT_TOKEN=...`. Keep tokens out of Git and chat.
-4. Leave `TELEGRAM_OWNER_ID` blank and run `jarvis-telegram.bat`. Open your bot
-   in Telegram and press Start (or send `/start`). The PC console prints your
-   numeric user ID. In this discovery mode, **no Windows commands run**.
-5. Close the bridge with Ctrl+C. Set `TELEGRAM_OWNER_ID` to that numeric ID in
-   `.env`, then run `jarvis-telegram.bat` again. It texts you when Jarvis is online.
-6. Try `open notepad`, `volume 30`, `what is running`, or `timer for 10 seconds`.
-   Complex requests need your `ANTHROPIC_API_KEY`, just like the original MVP.
+1. Check out `Saatvik-Branch`. Run `windows-mvp\setup.bat`, then
+   `windows-mvp\setup-telegram.bat` (requires Node.js 22 or newer).
+2. Copy `.env.example` to `.env` if needed. Set your Photon project settings:
 
-Only the configured user's **private chat** can control the PC. Groups,
-channels, other users, and bot messages are ignored. The bridge does not expose
-an HTTP port. Keep the Windows PC awake and logged in, with the bridge running.
-The first owner-authorized command must be sent after the worker is online.
+   ```dotenv
+   SPECTRUM_PROJECT_ID=908385d3-2f06-4c90-92d3-5937397eea69
+   SPECTRUM_PROJECT_SECRET=YOUR_PHOTON_PROJECT_SECRET
+   TELEGRAM_BOT_TOKEN=YOUR_BOTFATHER_TOKEN
+   TELEGRAM_OWNER_ID=
+   ```
 
-## OpenAI audio
+   Get the Telegram bot token by messaging **@BotFather**, sending `/newbot`,
+   and following its prompts. Use a dedicated bot. Keep secrets in `.env`;
+   they are ignored by Git. The OpenAI API key and Photon project secret do
+   **not** replace the Telegram bot token.
+3. Stop the old polling bridge and any other instances using this bot. Run
+   `jarvis-telegram.bat`. Spectrum registers the bot's webhook with Photon
+   automatically; no public local server or tunnel is needed.
+4. Open your bot and send `/start`. With `TELEGRAM_OWNER_ID` blank, the PC
+   prints your numeric user ID and runs no PC commands.
+5. Stop with Ctrl+C, set `TELEGRAM_OWNER_ID` to that ID, and restart. Send
+   `/start` again. The first authorized message starts the Windows worker;
+   Jarvis sends its online notice once ready.
+6. Send `open notepad`, `volume 30`, `what is running`, or `timer for 10 seconds`.
+   Complex requests still use the original `ANTHROPIC_API_KEY` and Claude brain.
 
-Add `OPENAI_API_KEY` to the same `.env` file and restart. Optionally set
-`OPENAI_TTS_VOICE` (default `cedar`) and `OPENAI_TTS_MODEL` (default
-`gpt-4o-mini-tts`). Replies arrive as text plus an MP3 audio message using an
-AI-generated voice. Speech generation is limited to the first 1,500 characters
-of each reply; the complete text is still sent. OpenAI API billing applies.
-Remove any old `ELEVENLABS_*` settings; the bridge no longer reads them.
+Only the configured owner's private Telegram chat can control Windows.
+Messages from groups, other users, other platforms and the bot itself are ignored.
 
-The request uses OpenAI's [speech endpoint](https://developers.openai.com/api/docs/guides/text-to-speech).
-This handles outgoing spoken replies. The existing Claude brain and local
-Windows microphone mode keep their current providers.
+The scaffold command from Photon is for starting a new project. This existing
+MVP directly uses `spectrum-ts@12.10.1`, `Spectrum({...})`,
+`telegram.config({ botToken })`, and `for await (const [space, message] of app.messages)`.
+The dependency is already in the lockfile; you do not need to create another
+`jarvis` folder. See the [Photon SDK](https://github.com/photon-hq/spectrum-ts).
 
-Send `/audio off` for text-only replies or `/audio on` to enable audio for this
-run. If synthesis or audio upload fails, the text reply remains available.
-Incoming voice notes are not transcribed in this version; send typed commands.
+## Voice now and from the other repo
 
-## Approvals and ongoing replies
+For outgoing OpenAI voice, set `OPENAI_API_KEY` locally and restart. Defaults:
+`OPENAI_TTS_MODEL=gpt-4o-mini-tts`, `OPENAI_TTS_VOICE=cedar`. The bridge generates
+MP3 and sends Spectrum `voice(...)` content. `/audio off` disables spoken replies
+for this run; `/audio on` enables them. Replies always include text. Speech is
+limited to the first 1,500 characters and OpenAI API billing applies.
 
-For actions the MVP marks as needing permission, Jarvis sends the action and a
-unique code. Send `/approve CODE` or `/deny CODE`. No console input is needed.
-Unanswered requests expire after 60 seconds and are declined. Codes are valid
-for one pending action only. `/reset` clears the current Claude conversation;
-`/help` lists commands. Ctrl+C on the PC stops the bridge and its Windows worker.
+To connect your friend's voice implementation, configure:
 
-Timers reply to the same owner's chat. Timers and conversation memory remain
-in memory and do not survive restart. Received update IDs are stored in the
-ignored `.telegram-state.json` file before dispatch, preventing a restart from
-executing an already accepted command twice. If the bridge crashes mid-command,
-check whether the action completed before sending it again. Messages older
-than two minutes are skipped rather than executing old commands on reconnect.
-
-## Architecture
-
-```text
-Telegram private chat
-  -> Photon's @photon-ai/telegram-ts SDK (long polling)
-  -> local Python jarvis.telegram_worker (JSON lines over stdin/stdout)
-  -> existing Jarvis.handle -> router/Claude -> Windows tools
-  -> Jarvis.reply -> Telegram text + optional OpenAI MP3
+```dotenv
+VOICE_SERVICE_URL=http://127.0.0.1:8000
+# Optional authentication if their service requires it:
+VOICE_SERVICE_TOKEN=YOUR_SERVICE_TOKEN
 ```
 
-This integration uses the **published Photon Telegram SDK**, pinned to
-`@photon-ai/telegram-ts@10.1.1`. It calls Telegram's Bot API directly. It does
-not use Spectrum Cloud, a Photon project/secret, MCP, or a public webhook.
-If a sponsor track specifically requires the Spectrum runtime, this SDK-only
-integration should not be represented as fulfilling that requirement.
+Restart the bridge after changing settings. With this URL configured, the
+service handles both speech and transcription, overriding the built-in OpenAI
+speech function. Without the URL, text and optional OpenAI spoken replies work;
+incoming voice notes ask the user to type instead.
 
-## Troubleshooting
+Give your friend [VOICE_API.md](VOICE_API.md) for the exact HTTP contract. Their
+repo can run separately on the same PC or expose an accessible HTTPS service.
+Neither side needs to import the other repo or use MCP.
 
-- No user ID printed: ensure you opened your bot, not BotFather, and sent a
-  fresh `/start`. Check the token and internet connection.
-- No reply after configuring: verify the numeric owner ID, restart the bridge,
-  and send a fresh command from your private chat.
-- Worker will not start: run `setup.bat` first. Advanced users can set
-  `JARVIS_PYTHON` to a Python executable with the MVP packages installed.
-- Bot already has a webhook / another instance: use a dedicated new bot and
-  run one bridge. This launcher does not delete another integration's webhook.
-- No audio: check the OpenAI key, API billing, voice/model access, and
-  `/audio on`. Text delivery does not require OpenAI.
-- Elevated apps, a locked desktop, and Office requirements have the same limits
-  as the original Windows MVP.
+## Approval and message behavior
 
-## Tests
+Actions requiring permission send `/approve CODE` and `/deny CODE`. Type one
+of those commands; voice transcripts cannot approve or deny actions. Unanswered
+requests expire after 60 seconds. Transcription runs separately so typed
+approval replies can still arrive. Two voice transcriptions may be active at
+once; voice notes are limited to 5 MB and 2 minutes.
+
+`/help` lists commands. `/reset` clears the current Claude conversation. Timers
+send replies to the owner's chat. Timers and conversation memory are in memory
+and do not survive restart.
+
+Spectrum streams can redeliver messages. The bridge records the last 1,000
+accepted chat/message IDs in `.telegram-state.spectrum.json` before dispatch.
+Repeated IDs are skipped across restart; messages older than two minutes are
+also skipped. State is scoped to the project, bot and owner. If the bridge
+crashes mid-command, check the PC before explicitly sending the command again.
+If recording state fails, that message does not run. Transcription failures ask
+for a typed command. Speech or voice delivery failures leave the text available.
+
+## Troubleshooting and checks
+
+- No connection: check all three Spectrum/Telegram credentials and internet
+  access. Use a dedicated bot; Spectrum takes over its webhook.
+- No ID printed: send a fresh `/start` to your bot, not BotFather.
+- No response: verify `TELEGRAM_OWNER_ID`, restart, and send a fresh `/start`.
+- Python fails: run `setup.bat`, or set `JARVIS_PYTHON` to the Windows Python
+  executable with MVP packages installed.
+- No voice: check `OPENAI_API_KEY` and API billing, or your friend's service URL,
+  token and endpoint responses. Send `/audio on`.
+- The original MVP's limits for locked desktops, elevated apps and Office apply.
 
 ```text
 cd windows-mvp
@@ -99,7 +106,7 @@ npm ci
 npm test
 ```
 
-The Telegram tests use the real published SDK with mocked network responses,
-including multipart MP3 upload. They do not spend credits or send real messages.
-The Windows workflow also runs the original desktop smoke test. A live
-Telegram/OpenAI demo requires your locally configured credentials.
+Automated tests validate real Spectrum content builders and mocked voice
+responses without sending messages or spending API credits. Windows CI also
+runs the desktop smoke test. Live Telegram pairing needs the bot token and a
+running Windows bridge.
