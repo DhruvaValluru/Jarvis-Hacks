@@ -139,12 +139,19 @@ def system_status() -> str:
 )
 def set_timer(seconds: int, message: str = "Time's up.") -> str:
     seconds = int(seconds)
-    timer = threading.Timer(seconds, lambda: registry.announce(f"Reminder: {message}"))
+    tell = registry.announcer()  # if another PC set this timer, the reminder goes back there
+    timer = threading.Timer(seconds, lambda: tell(f"Reminder: {message}"))
     timer.daemon = True
     timer.start()
     mins, secs = divmod(seconds, 60)
     when = f"{mins} min {secs} s" if mins else f"{secs} s"
     return f"Timer set for {when}."
+
+
+@tool("say", "Say something out loud on this PC's speakers.", {"text": {"type": "string"}}, required=["text"])
+def say(text: str) -> str:
+    registry.speak(text)
+    return "Said it."
 
 
 @tool("lock_pc", "Lock the computer (shows the sign-in screen).")

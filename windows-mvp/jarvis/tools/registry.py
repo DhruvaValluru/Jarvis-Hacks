@@ -7,6 +7,7 @@ Each tool declares a risk tier:
 """
 
 import json
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -62,6 +63,20 @@ TOOLS: dict[str, Tool] = {}
 
 # Hook for tools that need to talk to the user later (timers). Set by the app.
 announce: Callable[[str], None] = print
+# Hook for speaking out loud on this PC (the say tool). Set by the app.
+speak: Callable[[str], None] = print
+
+_call = threading.local()
+
+
+def reply_to(send: Callable[[str], None] | None) -> None:
+    """While a call from another PC runs on this thread, send its later messages back there."""
+    _call.reply_to = send
+
+
+def announcer() -> Callable[[str], None]:
+    """Where a later message from the current tool call should go: the PC that asked, or here."""
+    return getattr(_call, "reply_to", None) or (lambda text: announce(text))
 
 
 def tool(name: str, description: str, params: dict | None = None, required=(), risk="act", confirm_if=None, hidden=False):
@@ -73,7 +88,7 @@ def tool(name: str, description: str, params: dict | None = None, required=(), r
 
 
 def schemas() -> list[dict]:
-    return [t.schema() for t in TOOLS.values() if not t.hidden]
+    return [t.schema() for t in list(TOOLS.values()) if not t.hidden]
 
 
 def _short(args: dict, limit: int = 300) -> str:

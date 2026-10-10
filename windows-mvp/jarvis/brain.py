@@ -69,7 +69,9 @@ class Brain:
     def _context(self) -> str:
         w = active_window()
         where = f'; active window: "{w["title"]}" ({w["process"]})' if w else ""
-        return f"[{time.strftime('%A %d %B %Y, %H:%M')}{where}]"
+        others = remote.context_line()
+        others = f"; other PCs: {others}" if others else ""
+        return f"[{time.strftime('%A %d %B %Y, %H:%M')}{where}{others}]"
 
     def ask(self, text: str) -> str:
         # History is append-only within a conversation; start fresh when it gets long.

@@ -25,29 +25,33 @@ The first voice command downloads the speech model (about 150 MB). With no API k
 
 ## Use several PCs
 
-One Jarvis can work on all your PCs: "open Spotify on the laptop", "copy build.zip from computer 2 to here and unzip it", "read the Excel numbers on the desktop and put them in Word on the laptop".
+One Jarvis can work on all your PCs: "open Spotify on the laptop", "say dinner's ready on computer 2", "copy build.zip from computer 2 to here and unzip it", "send my clipboard to the laptop".
 
-1. Install [Tailscale](https://tailscale.com/download) on each PC and sign in with the same account. That puts the PCs on one private, encrypted network that works from anywhere. A home Wi-Fi network works too, but Tailscale also works when the PCs are on different networks.
-2. On the PC you **don't** talk to (computer 2), run `jarvis.bat --serve`. It prints two lines, for example:
-   ```
-   JARVIS_DEVICES=laptop=100.64.0.2:8765
-   JARVIS_TOKEN=Xy3...
-   ```
-   Click **Allow** if Windows Firewall asks.
-3. On the PC you talk to (computer 1), paste those two lines into `windows-mvp\.env` and run `jarvis.bat`. It says `Connected to laptop (... tools)`.
+1. Put the PCs on the same network: the same home Wi-Fi, or [Tailscale](https://tailscale.com/download) on each PC signed in to one account. Tailscale is private and encrypted, and it works when the PCs are in different places.
+2. On computer 2, run `jarvis.bat --serve`. It prints a `JARVIS_TOKEN=...` line. Click **Allow** if Windows Firewall asks.
+3. Paste that line into `windows-mvp\.env` on computer 1 and run `jarvis.bat`. It finds computer 2 by itself and says `Connected to laptop at 100.64.0.2:8765 (25 tools, 3 ms)`.
 
-For both directions, set `JARVIS_SERVE=1` on each PC, list the other PC in `JARVIS_DEVICES`, and use the same `JARVIS_TOKEN` on both.
+You don't type any IP addresses. If discovery can't see a PC (some routers block broadcasts), add the `JARVIS_DEVICES=...` line that `--serve` also prints. To control both PCs from either one, set `JARVIS_SERVE=1` on both and use the same token.
 
 | Say | What happens |
 |---|---|
-| "Open Spotify on the laptop" / "tell computer 2 to pause" | Instant, no AI call: the fast path runs the tool on that PC. Jarvis adds under 1 ms on top of the network time |
-| "What's on the laptop's screen?" | Screenshot from the laptop, described here |
-| "Copy report.docx from the laptop to my Downloads and open it" | `copy_file`, then `open_app` here |
-| "Write a Python script on computer 2 that prints the date, copy it here and run it" | Claude chains PCs: it writes the file on one, moves it, runs it on the other |
+| "Open Spotify on the laptop" / "tell computer 2 to pause" / "say hi on the laptop" | Instant, no AI call: the fast path runs it on that PC |
+| "Send my clipboard to the laptop" | Instant clipboard handoff |
+| "Copy report.docx from the laptop to my Downloads and open it" | `copy_file` streams the file at full network speed (any size), then opens it here |
+| "Remind me in 10 minutes on the laptop" | The reminder comes back and is spoken on the PC you're talking to |
+| "What's the laptop doing?" | Answered right away: each PC pushes its active window and whether someone's using it |
+| "Build it on computer 2, copy it here and run it" | Claude chains PCs; calls to different PCs in one step run at the same time |
 
-**Speed:** each PC keeps one open connection (no reconnect per call), tool lists are fetched once at startup, and calls to different PCs in the same step run at the same time.
+**How it stays fast:**
+- Each PC keeps two open connections to every other PC. One is for commands: Jarvis adds under 1 ms on top of the network time.
+- The other is a live feed the other PC answers the instant something happens: a message, a new active window, or a change to its tools. It also works as a heartbeat, so an offline PC is spotted right away and commands to it fail in under 2 seconds instead of hanging.
+- Files stream as raw bytes on a separate connection, so a big copy never blocks commands.
+- Claude already knows what every PC is showing when you ask, which saves a whole round trip.
 
-**Safety:** every request needs the shared token. Actions that need approval are confirmed on the PC you're talking to. The serving PC refuses them unless the caller says you approved. Don't expose the port to the internet; use Tailscale or your home network. Each PC logs what it ran in its own audit log.
+**Safety:**
+- Every request, and every discovery reply, has to prove the shared token. A stranger on your network can't find, control or impersonate your PCs.
+- Actions that need approval, including writing files, are confirmed on the PC you're talking to. The serving PC refuses them otherwise.
+- Don't expose port 8765 to the internet. Each PC logs what it ran in its own audit log.
 
 ## Modes
 
@@ -56,7 +60,7 @@ jarvis.bat            press Enter to talk, or type
 jarvis.bat --wake     hands-free: say "Jarvis, ..." any time
 jarvis.bat --text     typing only
 jarvis.bat --do "open notepad"
-jarvis.bat --serve    let your other PCs use this one
+jarvis.bat --serve    let your other PCs use this one (prints the token)
 jarvis.bat --list-tools
 ```
 
@@ -78,7 +82,7 @@ tools: open/close/focus apps, UI Automation (list/click/set/read), Excel/Word CO
        media keys, volume, clipboard, web, timers, screenshot, PowerShell (asks first)
 ```
 
-Code: `jarvis/router.py` (instant commands), `jarvis/brain.py` (Claude loop), `jarvis/tools/` (one file per area), `jarvis/remote.py` (other PCs), `jarvis/voice.py`.
+Code: `jarvis/router.py` (instant commands), `jarvis/brain.py` (Claude loop), `jarvis/tools/` (one file per area), `jarvis/remote.py` + `jarvis/discovery.py` (other PCs), `jarvis/voice.py`.
 
 ## Limits
 

@@ -46,6 +46,7 @@ class Config:
     serve: bool = False
     serve_host: str = "0.0.0.0"
     port: int = 8765
+    discover: bool = True
 
     @property
     def has_llm(self) -> bool:
@@ -68,6 +69,7 @@ def load() -> Config:
         serve=os.environ.get("JARVIS_SERVE", "0") == "1",
         serve_host=os.environ.get("JARVIS_SERVE_HOST", "0.0.0.0"),
         port=int(os.environ.get("JARVIS_PORT", "8765")),
+        discover=os.environ.get("JARVIS_DISCOVER", "1") != "0",
     )
 
 

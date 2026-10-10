@@ -7,7 +7,7 @@
   python -m jarvis --serve       let other PCs use this PC's tools (prints pairing info)
   python -m jarvis --list-tools
 
-Multi-PC: set JARVIS_DEVICES and JARVIS_TOKEN in .env (see jarvis/remote.py), then
+Multi-PC: put the same JARVIS_TOKEN in .env on each PC (see jarvis/remote.py), then
 "open spotify on the laptop" or "copy report.docx from the laptop to here and open it".
 """
 
@@ -93,6 +93,10 @@ def main() -> None:
         return
 
     cfg = config.load()
+    from .voice import Speaker
+
+    speaker = Speaker(enabled=cfg.speak and not args.quiet)
+    registry.speak = lambda text: speaker.say(text) if speaker.enabled else print(f"(says) {text}")
     if args.serve:
         print("=" * 60)
         print(" JARVIS - serving this PC to your other PCs. Ctrl+C to stop.")
@@ -103,11 +107,8 @@ def main() -> None:
             print("\nBye.")
         return
     if cfg.serve:
-        remote.serve(cfg, log=lambda s: print(f" {s}"), background=True)
-    remote.connect(cfg, log=lambda s: print(f" {s}"))
-    from .voice import Speaker
-
-    speaker = Speaker(enabled=cfg.speak and not args.quiet)
+        remote.serve(cfg, log_fn=lambda s: print(f" {s}"), background=True)
+    remote.connect(cfg, log_fn=lambda s: print(f" {s}"))
     jarvis = Jarvis(cfg, speaker)
 
     if args.do:
