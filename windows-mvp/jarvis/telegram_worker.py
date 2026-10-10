@@ -54,6 +54,10 @@ class Approvals:
 
 
 def main():
+    if sys.platform == "win32":
+        from .tools.wininput import enable_dpi_awareness
+
+        enable_dpi_awareness()  # same as the console app, so computer-use clicks line up on scaled displays
     protocol = sys.stdout
     output_lock = threading.Lock()
 

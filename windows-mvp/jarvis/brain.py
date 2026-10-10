@@ -7,6 +7,7 @@ import anthropic
 
 from . import tools
 from .config import Config
+from .tools import computer
 from .tools.apps import active_window
 
 SYSTEM = """You are Jarvis, a voice assistant running on the user's Windows PC. You control apps through tools:
@@ -24,6 +25,13 @@ Safety rules:
 - Never type passwords, payment details or one-time codes, and never approve admin (UAC) prompts.
 - Sending, deleting, buying or posting needs the user's clear request; the app will also ask them to confirm."""
 
+COMPUTER_USE = """
+
+Computer use: the screenshot, click, type, key, scroll and zoom tools see the screen and drive the user's real
+mouse and keyboard. Use them only when the tools above can't do the job: games, canvases, custom-drawn apps,
+or when UI Automation finds nothing. Take a screenshot before acting and another to check the result. Prefer
+keyboard shortcuts to long click sequences. The user can take the mouse back at any time."""
+
 
 class Brain:
     def __init__(self, cfg: Config, confirm: Callable[[str], bool], status: Callable[[str], None] = print):
@@ -33,6 +41,12 @@ class Brain:
         self.client = anthropic.Anthropic(api_key=cfg.api_key or None)
         self.messages: list = []
         self.fallbacks = cfg.fallbacks
+        self.system = SYSTEM
+        self.tools = tools.schemas()
+        if cfg.computer_use:
+            # The toolset has its own screenshot member; our custom tool of the same name would clash.
+            self.tools = [t for t in self.tools if t["name"] != "screenshot"] + [computer.TOOLSET]
+            self.system += COMPUTER_USE
 
     def reset(self) -> None:
         self.messages = []
@@ -41,8 +55,8 @@ class Brain:
         kwargs = dict(
             model=self.cfg.model,
             max_tokens=16000,
-            system=SYSTEM,
-            tools=tools.schemas(),
+            system=self.system,
+            tools=self.tools,
             messages=self.messages,
             output_config={"effort": self.cfg.effort},
             cache_control={"type": "ephemeral"},
@@ -68,8 +82,12 @@ class Brain:
         if len(self.messages) > 60:
             self.reset()
         self.messages.append({"role": "user", "content": f"{self._context()}\n{text}"})
+        computer.new_session()
         try:
             return self._loop()
+        except computer.Aborted:
+            self.reset()
+            return "Stopped. You moved the mouse to the corner, so I let go of the controls."
         except anthropic.AuthenticationError:
             self.reset()
             return "My API key was rejected. Check ANTHROPIC_API_KEY in the .env file."
@@ -97,24 +115,43 @@ class Brain:
             if said:
                 self.status(said)
             results = []
+            computer_failed = False
             for call in calls:
-                self.status(f"  -> {call.name} {call.input}")
-                ok, out = tools.run(call.name, dict(call.input), self.confirm)
-                results.append(_tool_result(call.id, ok, out))
+                args = _args(call.input)
+                self.status(f"  -> {call.name} {args}")
+                if getattr(call, "toolset_name", None) == computer.TOOLSET_NAME:
+                    # Computer actions run in order; after one fails, the rest of the turn is skipped.
+                    if computer_failed:
+                        results.append(computer.halted_result(call.id))
+                        continue
+                    ok, out = computer.run(call.name, args, self.confirm)
+                    computer_failed = not ok
+                    results.append(_tool_result(call.id, ok, out, toolset=computer.TOOLSET_NAME))
+                else:
+                    ok, out = tools.run(call.name, args, self.confirm)
+                    results.append(_tool_result(call.id, ok, out))
             self.messages.append({"role": "user", "content": results})
         self.reset()
         return "That took too many steps, so I stopped."
 
 
-def _tool_result(tool_use_id: str, ok: bool, out) -> dict:
+def _args(raw) -> dict:
+    """Tool input as a dict. Toolset members arrive as SDK models with unset fields as None."""
+    if hasattr(raw, "model_dump"):
+        return raw.model_dump(exclude_none=True)
+    return dict(raw or {})
+
+
+def _tool_result(tool_use_id: str, ok: bool, out, toolset: str | None = None) -> dict:
     if isinstance(out, tools.Image):
-        content = [
-            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": out.png_b64}},
-            {"type": "text", "text": out.caption},
-        ]
+        content = [{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": out.png_b64}}]
+        if out.caption:
+            content.append({"type": "text", "text": out.caption})
     else:
         content = str(out)
     block = {"type": "tool_result", "tool_use_id": tool_use_id, "content": content}
+    if toolset:
+        block["toolset_name"] = toolset  # the API rejects toolset results without it
     if not ok:
         block["is_error"] = True
     return block

@@ -76,7 +76,7 @@ This document splits that idea into components, points out where the operating s
 - **Phones can't hold sockets open in the background** (especially iOS). Wake them with APNs/FCM push, then connect.
 
 ### 3.3 The hub ("brain")
-- **Location:** a home server, a desktop that's always on, or a small cloud VM. Self-hosting is better for privacy; cloud is better for reachability.
+- **Location:** a home server, a desktop that's always on, a small cloud VM, or Claude Managed Agents (see 3.6). Self-hosting is better for privacy; cloud is better for reachability. Keep the hub off the PCs it controls, so a PC crash doesn't take the brain down with it.
 - **Device registry:** identity, capabilities, online status, last seen.
 - **Context store:** live state per device, plus "which device is the user on right now" (decided by the most recent input activity).
 - **Event bus:** devices publish state changes and the hub subscribes.
@@ -107,6 +107,51 @@ Nitpicky details that matter:
 - Keep a searchable history of what you did across devices: apps, documents, URLs, transcripts. This answers questions like "what was I reading on my phone yesterday?"
 - Use a vector store plus structured events in SQLite or Postgres.
 - Microsoft Recall drew heavy criticism for storing screenshots of everything. Learn from that: store text and metadata, encrypt at rest, set retention limits, and support "pause recording" and per-app exclusions (password managers, banking, private browsing).
+- Memory lives in the **hub**, not on a device, so it survives a device crash and is shared by every device (see 3.6).
+
+### 3.6 Orchestrator outside the PC, workers on the PC (crash resilience)
+
+The brain runs **outside** the machines it controls. Each PC runs a **worker** (a subagent) that does the hands-on work. The orchestrator sends it whole jobs, not single clicks.
+
+```
+  Hub (cloud VM, home server, or Claude Managed Agents)        Each PC
+ ┌───────────────────────────────────────────┐   mTLS    ┌────────────────────────────────────┐
+ │ Orchestrator agent                        │ ────────▶ │ Worker (today's windows-mvp brain) │
+ │  - plans; persistent memory               │  job:     │  - runs the UIA / COM / computer-  │
+ │  - task log: queued/running/done/failed   │  "draw a  │    use loop locally (own Claude    │
+ │  - retries, reroutes, reports to phone    │  square"  │    calls, so no extra hop per step)│
+ │  - survives any PC crash or reboot        │ ◀──────── │  - local confirms + kill switch    │
+ └───────────────────────────────────────────┘  result,  │    always win over the hub         │
+                                                heartbeat└────────────────────────────────────┘
+```
+
+**Who does what**
+- **Orchestrator (hub):** understands the request, splits it into jobs, picks the device, and keeps memory and the task log. A job means "on PC-1: open Paint and draw a red square" or "on laptop: send me the build log", not "click at (412, 300)".
+- **Worker (PC):** runs one job with the full local toolset (UI Automation → COM → computer use) and its own short Claude loop. It returns a result, the steps it took, and a final screenshot if asked. The screenshot → click → screenshot loop stays local because a cloud round trip per step would make it slow.
+- **Fast path stays local.** "Pause music" and "volume 30" never leave the PC.
+
+**What happens when something crashes**
+
+| Failure | What happens |
+|---|---|
+| Worker crashes or the PC reboots mid-job | The hub sees the heartbeat stop and marks the job `interrupted`. When the worker reconnects, the hub asks the user whether to retry, or retries if the job is safe to repeat. A watchdog restarts the worker. On startup the worker **releases every key and mouse button**, so nothing stays stuck down. |
+| Hub crashes or the network drops | The worker misses heartbeats, **stops the current job and lets go of the mouse and keyboard**. It never keeps acting unsupervised. Local fast-path commands keep working. The hub replays its task log on restart. |
+| Claude API error or refusal inside a job | The worker reports `failed` with the reason. The hub decides whether to retry, use another device, or ask the user. |
+| PC offline | The job waits in the hub's queue (with a deadline) or goes to another device. |
+
+**Hosting the hub.** Two options:
+- **Our own hub** (Python/FastAPI, as in 3.3). Full control, can run at home.
+- **Claude Managed Agents.** The agent loop, session history and memory stores live at Anthropic, so they survive anything on our side. "Run on PC" becomes one custom tool that our relay forwards to the worker. Its built-in tools run in an Anthropic cloud container, so they can't touch the PC directly; the worker is still needed.
+
+Pick one when Phase 2 starts. Either way, workers speak the same job protocol.
+
+**Job protocol (worker side, first cut).** It runs over WebSocket + JSON-RPC (MCP-compatible):
+- `run_job {id, instruction, deadline, allow: [tiers]}` streams `progress` events, then `result {status, summary, steps, screenshot?}`.
+- `cancel_job {id}`.
+- `heartbeat` every 5 s in both directions, with a 15 s timeout.
+- `capabilities`.
+
+Confirmations for risky steps still pop up **on the PC or the user's phone**, never auto-approved by the hub.
 
 ---
 
