@@ -1,6 +1,6 @@
 # Live task board
 
-_Auto-generated 2026-10-10 20:26 UTC from [TASKS.md](TASKS.md), open PRs and branches. Do not edit; changes are overwritten._
+_Auto-generated 2026-10-10 20:27 UTC from [TASKS.md](TASKS.md), open PRs and branches. Do not edit; changes are overwritten._
 
 **Progress:** 18 of 81 tasks done.
 
@@ -102,4 +102,3 @@ First 3 per area. Take the lowest number in your area.
 
 - PR #7 "Let one Jarvis control your other PCs" on `claude/zealous-ramanujan-1tzfmr`: add a task ID like `[C6]` to the title
 - PR #6 "Add Jarvis voice: talk to Jarvis like ChatGPT voice mode" on `jarvisvoice`: add a task ID like `[C6]` to the title
-- PR #4 "Add Claude computer use to the Windows MVP" on `eshaan-work`: add a task ID like `[C6]` to the title
