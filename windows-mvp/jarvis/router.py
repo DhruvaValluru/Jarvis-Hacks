@@ -6,7 +6,7 @@ unrecognised goes to Claude instead.
 
 import re
 
-WAKE = re.compile(r"^\s*(hey|ok|okay|yo)?[\s,]*jarvis\b[\s,.!?]*", re.I)
+WAKE = re.compile(r"^\s*(hey|ok|okay|yo)?[\s,]*(alfred|jarvis)\b[\s,.!?]*", re.I)  # Alfred; "Jarvis" still works
 COMPOUND = re.compile(r"\b(and|then|after that|also)\b", re.I)
 
 

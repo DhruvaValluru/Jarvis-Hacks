@@ -38,6 +38,7 @@ Legend: `[ ]` open · `[x]` done · `[-]` dropped · `needs:` must be done first
 - [x] **0.5** Unify the reply and confirm hooks: Telegram adds `on_reply`/`on_confirm` to `Jarvis`; computer use adds its own confirms. Make every confirmation go through `Jarvis.confirm`, so a Telegram user gets the same y/N for Send/Delete and computer-use clicks. needs: 0.2, 0.4.
 - [ ] **0.7** PR #6 (browser voice mode on OpenAI's live voice model, `jarvisvoice`): decide how it relates to area D (local voice) and E3 (voice service). Then give it a task ID, merge `main`, and add its tests to `test.bat`, or keep it as a separate app.
 - [ ] **0.8** PR #7 (multi-PC control, peer-to-peer tool calls): reconcile with the hub/worker design in `docs/ARCHITECTURE.md` section 3.6 (tasks I1–I6) before merging. Decide: peer-to-peer now and the hub later, or the hub only. Then give it a task ID and merge `main`.
+- [ ] **0.9** The assistant's name is **Alfred**. *Done:* what users see (Claude's self-name, console text, Telegram, data notice, MVP README; the wake word accepts "Alfred" and "Jarvis"). *Open:* decide whether to also rename code, scripts and the repo (`jarvis.bat`, `python -m jarvis`); that breaks every open branch, so do it only at a quiet moment.
 - [ ] **0.6** Delete the stale branches `mvp` and `claude/sharp-bohr-sglils` (already merged). Ask the repo owner first.
 
 ## A. Core brain (Claude loop, routing, memory)
@@ -74,7 +75,7 @@ Legend: `[ ]` open · `[x]` done · `[-]` dropped · `needs:` must be done first
 - [ ] **C7** Measure cost and latency per step; compare 1024 vs 1280 px. Write the numbers in `docs/COMPUTER_USE_PLAN.md`.
 - [ ] **C8** Multi-monitor: capture the monitor the target window is on.
 - [ ] **C9** "Jarvis is driving" overlay with a Stop button, plus a global stop hotkey.
-- [ ] **C10** Remote stop for computer use: the corner kill switch only works for someone at the PC. When a task comes from Telegram, `/stop` must abort computer use mid-turn. needs: E2.
+- [x] **C10** Remote stop for computer use: the corner kill switch only works for someone at the PC. When a task comes from Telegram, `/stop` must abort computer use mid-turn. needs: E2. *Decision:* `/stop` is a hard stop (kill the worker tree, restart, release held keys and buttons).
 
 ## D. Voice (local)
 
@@ -93,7 +94,7 @@ Legend: `[ ]` open · `[x]` done · `[-]` dropped · `needs:` must be done first
 - [ ] **E3** Voice service from `windows-mvp/VOICE_API.md` (`POST /speech`, `POST /transcribe`). *Current state:* the Telegram bridge calls OpenAI directly for voice notes and spoken replies; the custom service is optional. Decide whether to keep OpenAI or build the service, and record it here.
 - [ ] **E4** Confirmations over Telegram: inline Yes/No buttons, with a 60 s timeout that defaults to No. needs: 0.5.
 - [ ] **E5** Send screenshots to Telegram on request ("show me my screen").
-- [ ] **E7** Remote computer-use guardrails: decide whether computer use is allowed from Telegram by default (screenshots of the PC leave the house, and nobody is at the PC to stop the mouse). Add `JARVIS_REMOTE_COMPUTER_USE` if needed.
+- [x] **E7** Remote computer-use guardrails: decide whether computer use is allowed from Telegram by default (screenshots of the PC leave the house, and nobody is at the PC to stop the mouse). Add `JARVIS_REMOTE_COMPUTER_USE` if needed. *Decision:* yes, Telegram is how you text Alfred, so computer use stays on from Telegram; risky clicks ask in Telegram and `/stop` (C10) stops it.
 - [ ] **E6** Security review of the remote path: owner check, replay of old messages, what happens if the bot token leaks, rate limits. Write findings in `docs/CREDENTIALS_AND_USER_SECURITY.md`.
 
 ## F. Safety and security (applies to every area)
@@ -104,7 +105,7 @@ Legend: `[ ]` open · `[x]` done · `[-]` dropped · `needs:` must be done first
 - [ ] **F4** Per-app permissions (allow, ask, never) for UIA and computer use.
 - [ ] **F5** Audit log viewer: a local page listing actions with filters.
 - [ ] **F6** User-approved credential fill (plan in `docs/CREDENTIALS_AND_USER_SECURITY.md`). Not before F2.
-- [ ] **F8** Third-party data map: list what goes to Anthropic (prompts, screenshots), OpenAI (voice notes, reply audio) and Photon (Telegram messages), and show it to users in the README.
+- [x] **F8** Third-party data map: list what goes to Anthropic (prompts, screenshots), OpenAI (voice notes, reply audio) and Photon (Telegram messages), and show it to users in the README. *Done:* `windows-mvp/PRIVACY.md`, accepted at setup (`jarvis --terms`, versioned), required before the console or Telegram runs, shown on Telegram `/start` and `/privacy`.
 - [ ] **F9** `npm ci` in `windows-mvp/telegram` reports 18 moderate vulnerabilities. Run `npm audit`, update what's safe, and note the rest. This changes `package-lock.json`, so it's a spec change.
 - [ ] **F7** Secrets hygiene: no keys in Git (scan in CI), `.env` only, and document key rotation.
 

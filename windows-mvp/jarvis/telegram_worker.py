@@ -6,13 +6,15 @@ reader accepts approval replies while a command is waiting for confirmation.
 
 import contextlib
 import json
+import os
 import queue
 import secrets
 import sys
 import threading
 
-from . import config
+from . import config, consent
 from .__main__ import Jarvis
+from .tools.registry import audit
 
 
 class Approvals:
@@ -53,11 +55,24 @@ class Approvals:
                 entry["event"].set()
 
 
-def main():
-    if sys.platform == "win32":
-        from .tools.wininput import enable_dpi_awareness
+def release_held_input() -> list[str]:
+    """After /stop killed the previous worker mid-action, let go of anything it was holding."""
+    if sys.platform != "win32":
+        return []
+    from .tools.wininput import enable_dpi_awareness, release_all
 
-        enable_dpi_awareness()  # same as the console app, so computer-use clicks line up on scaled displays
+    enable_dpi_awareness()  # same as the console app, so computer-use clicks line up on scaled displays
+    try:
+        return release_all()
+    except Exception:  # noqa: BLE001 - never block startup on this
+        return []
+
+
+def main():
+    after_stop = os.environ.get("JARVIS_RESTART_REASON") == "stop"
+    released = release_held_input()
+    if after_stop:
+        audit("telegram_stop", {}, True, f"hard stop from Telegram; released: {', '.join(released) or 'nothing held'}")
     protocol = sys.stdout
     output_lock = threading.Lock()
 
@@ -97,10 +112,15 @@ def main():
     def reply(text):
         emit({"type": "reply", "text": str(text)})
 
+    if not consent.accepted():
+        # Only the person at the PC can accept the data notice (jarvis.bat --terms).
+        emit({"type": "notice", "text": consent.NOT_ACCEPTED})
+        sys.exit(3)
+
     with contextlib.redirect_stdout(sys.stderr):
         jarvis = Jarvis(config.load(), on_reply=reply, on_confirm=approvals.request)
         threading.Thread(target=read_input, daemon=True).start()
-        emit({"type": "ready"})
+        emit({"type": "ready", "after_stop": after_stop, "released": len(released)})
         while not stopped.is_set():
             try:
                 message = commands.get(timeout=0.2)

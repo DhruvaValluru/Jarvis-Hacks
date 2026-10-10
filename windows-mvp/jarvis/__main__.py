@@ -1,24 +1,25 @@
-"""Run Jarvis.
+"""Run Alfred (the code and commands are still named jarvis).
 
   python -m jarvis              talk or type (press Enter on an empty line to speak)
   python -m jarvis --text       typing only, no microphone
-  python -m jarvis --wake       hands-free: say "Jarvis, ..." any time
+  python -m jarvis --wake       hands-free: say "Alfred, ..." any time
   python -m jarvis --do "open notepad"   run one command and exit
   python -m jarvis --list-tools
   python -m jarvis --doctor     check this PC matches the shared test spec
+  python -m jarvis --terms      show the data notice and accept it (setup.bat runs this)
 """
 
 import argparse
 import re
 import sys
 
-from . import config, router, tools
+from . import config, consent, router, tools
 from .tools import registry
 
 
 def console_confirm(reason: str) -> bool:
     try:
-        answer = input(f"\n  Jarvis wants to: {reason}\n  Allow? [y/N] ")
+        answer = input(f"\n  Alfred wants to: {reason}\n  Allow? [y/N] ")
     except EOFError:
         return False
     return answer.strip().lower() in ("y", "yes")
@@ -48,7 +49,7 @@ class Jarvis:
         if self.on_reply:
             self.on_reply(text)
             return
-        print(f"Jarvis: {text}")
+        print(f"Alfred: {text}")
         if self.speaker:
             self.speaker.say(text)
 
@@ -78,12 +79,20 @@ class Jarvis:
 def main() -> None:
     p = argparse.ArgumentParser(prog="jarvis")
     p.add_argument("--text", action="store_true", help="typing only, no microphone")
-    p.add_argument("--wake", action="store_true", help='hands-free: listens for "Jarvis"')
+    p.add_argument("--wake", action="store_true", help='hands-free: listens for "Alfred"')
     p.add_argument("--do", metavar="COMMAND", help="run one command and exit")
     p.add_argument("--quiet", action="store_true", help="don't speak replies")
     p.add_argument("--list-tools", action="store_true")
     p.add_argument("--doctor", action="store_true", help="check this PC matches the test spec")
+    p.add_argument("--terms", action="store_true", help="show the data notice and accept it")
     args = p.parse_args()
+
+    if args.terms:
+        if consent.accepted():
+            print(consent.NOTICE.format(version=consent.TERMS_VERSION))
+            print("Already accepted on this PC.")
+            sys.exit(0)
+        sys.exit(0 if consent.ensure(interactive=True) else 1)
 
     if args.doctor:
         from . import doctor
@@ -97,6 +106,10 @@ def main() -> None:
         state = "on" if cfg.computer_use else "off (JARVIS_COMPUTER_USE=0)"
         print(f"{'computer':18} [toolset] screenshot, click, type, key, scroll, zoom ... : {state}")
         return
+
+    if not consent.ensure(interactive=sys.stdin.isatty()):
+        print(consent.NOT_ACCEPTED)
+        sys.exit(1)
 
     if sys.platform == "win32":
         from .tools.wininput import enable_dpi_awareness
@@ -113,7 +126,7 @@ def main() -> None:
         return
 
     print("=" * 60)
-    print(" JARVIS - Windows MVP")
+    print(" ALFRED - Windows MVP")
     print(f" Brain: {cfg.model} (effort {cfg.effort})" if cfg.has_llm else " Brain: none (no API key) - simple commands only")
     if cfg.has_llm and cfg.computer_use:
         print(" Computer use: on. Move the mouse to the top-left corner to take it back.")
@@ -129,7 +142,7 @@ def main() -> None:
                 sys.exit(1)
     print(" Ctrl+C to quit. Audit log:", config.data_dir() / "audit.jsonl")
     print("=" * 60)
-    jarvis.reply("Jarvis online.")
+    jarvis.reply("Alfred online.")
 
     try:
         if args.wake and listener:
@@ -158,13 +171,13 @@ def chat_loop(jarvis: Jarvis, listener, speaker) -> None:
 
 
 def wake_loop(jarvis: Jarvis, listener, speaker) -> None:
-    print('Listening. Start with "Jarvis", e.g. "Jarvis, open Spotify".')
+    print('Listening. Start with "Alfred", e.g. "Alfred, open Spotify".')
     while True:
         speaker.wait()
         heard = listener.listen(max_wait=3600, max_len=15)
-        if not re.search(r"\bjarvis\b", heard, re.I):
+        if not re.search(r"\b(alfred|jarvis)\b", heard, re.I):
             continue
-        command = re.split(r"\bjarvis\b[\s,.!?]*", heard, maxsplit=1, flags=re.I)[1].strip()
+        command = re.split(r"\b(?:alfred|jarvis)\b[\s,.!?]*", heard, maxsplit=1, flags=re.I)[1].strip()
         print(f"You said: {heard}")
         if not command:
             jarvis.reply("Yes?")

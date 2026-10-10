@@ -1,4 +1,6 @@
-# Jarvis: Windows MVP (Phase 0)
+# Alfred: Windows MVP (Phase 0)
+
+The assistant is called **Alfred**. The code, scripts and commands still use the working name `jarvis` (`jarvis.bat`, `python -m jarvis`). Say "Alfred, ..." or "Jarvis, ..." to wake it.
 
 A voice assistant for one Windows 10/11 PC. It opens apps and works inside them through **UI Automation** (the API screen readers use) and **COM** (Office), so it doesn't need to move your mouse or read screenshots. For apps those can't reach (games, canvases, custom-drawn apps) it falls back to **computer use**: Claude looks at screenshots and drives the real mouse and keyboard. Claude plans the steps; common commands run instantly without it.
 
@@ -82,6 +84,11 @@ Settings live in `windows-mvp\.env` (see `.env.example`): model (default `claude
 - It treats text from windows, web pages and the clipboard as data, not as instructions.
 - Every action is logged to `%LOCALAPPDATA%\Jarvis\audit.jsonl`. Ctrl+C stops everything.
 - Computer-use screenshots are sent to Claude to decide the next step; turn it off with `JARVIS_COMPUTER_USE=0` if you'd rather not.
+- From Telegram, **`/stop`** is a hard stop: it kills whatever Alfred is doing and lets go of the mouse and keyboard.
+
+## Privacy and terms
+
+Setup shows a short data notice and asks you to type `agree`; Alfred doesn't run until you do. It says what goes to Anthropic (requests, window text, screenshots), OpenAI (Telegram voice notes and spoken replies) and Telegram/Photon (your chat), and what stays on the PC. Full text: [PRIVACY.md](PRIVACY.md). Read it again with `jarvis.bat --terms`.
 
 ## How it works
 

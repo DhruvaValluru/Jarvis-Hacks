@@ -1,16 +1,24 @@
 import { randomUUID } from 'node:crypto';
 
-export const HELP = 'Jarvis controls your Windows PC from this private chat.\n'
+export const HELP = 'Alfred controls your Windows PC from this private chat.\n'
   + 'Try: open notepad, volume 30, what is running, or timer for 10 seconds.\n'
+  + '/stop hard-stops everything Alfred is doing, right away, and lets go of the mouse and keyboard.\n'
   + '/reset starts a fresh conversation. /audio on or /audio off toggles spoken replies.\n'
   + 'Spoken replies use an AI-generated voice.\n'
   + 'Actions needing permission ask for /approve CODE or /deny CODE.';
 
+export const PRIVACY = 'Privacy: your messages and Alfred\'s replies pass through Telegram and Photon Spectrum. '
+  + 'Voice notes and spoken replies use OpenAI. What you ask, text Alfred reads on your PC and screenshots of your '
+  + 'screen go to Anthropic (Claude). Full notice: windows-mvp/PRIVACY.md.';
+
+export const STOPPED = 'Stopped. Everything Alfred was doing was cancelled, it let go of the mouse and keyboard, '
+  + 'and the conversation was reset. Ready for a new command.';
+
 export class Bridge {
   constructor({ ownerId, sendText, sendAudio, synthesize, writeCommand, log = console.log,
-    now = () => Date.now() }) {
+    now = () => Date.now(), hardStop = async () => {}, restarting = () => false }) {
     Object.assign(this, { ownerId: String(ownerId || ''), sendText, sendAudio,
-      synthesize, writeCommand, log, now });
+      synthesize, writeCommand, log, now, hardStop, restarting });
     this.audio = Boolean(synthesize);
     this.seen = new Set();
     this.pending = new Set();
@@ -37,7 +45,15 @@ export class Bridge {
       await this.sendText('Send a typed command for now. Voice-note input is not enabled yet.');
       return;
     }
-    if (text === '/start' || text === '/help') return this.sendText(HELP);
+    if (text === '/stop') {
+      // Hard stop: the PC side kills the worker process and starts a fresh one.
+      this.pending.clear();
+      await this.sendText('Stopping now.');
+      return this.hardStop();
+    }
+    if (text === '/start') return this.sendText(`${HELP}\n\n${PRIVACY}`);
+    if (text === '/help') return this.sendText(HELP);
+    if (text === '/privacy') return this.sendText(PRIVACY);
     if (text === '/audio on' || text === '/audio off') {
       this.audio = text.endsWith('on') && Boolean(this.synthesize);
       return this.sendText(this.audio ? 'Audio replies on (AI-generated voice).'
@@ -51,6 +67,7 @@ export class Bridge {
       return;
     }
     if (text.startsWith('/') && text !== '/reset') return this.sendText(HELP);
+    if (this.restarting()) return this.sendText('Alfred is restarting after /stop. Send that again in a few seconds.');
     if (text.length > 6000) return this.sendText('That command is too long. Keep it under 6,000 characters.');
     if (this.pending.size >= 10) return this.sendText('The command queue is full. Wait for a reply before sending more.');
     const id = randomUUID();
@@ -66,7 +83,9 @@ export class Bridge {
   async receiveWorker(message) {
     if (!this.ownerId) return;
     if (message.type === 'done') { this.pending.delete(message.id); return; }
-    if (message.type === 'ready') return this.sendText('Jarvis is online on your Windows PC. Send /help for commands.');
+    if (message.type === 'ready') {
+      return this.sendText(message.after_stop ? STOPPED : 'Alfred is online on your Windows PC. Send /help for commands.');
+    }
     if (message.type === 'approval') {
       return this.sendText(`Allow this action?\n${message.reason}\n\n`
         + `/approve ${message.token}\n/deny ${message.token}\nExpires in ${message.timeout} seconds.`);

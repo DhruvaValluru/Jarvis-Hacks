@@ -45,6 +45,10 @@ if defined KEY (
 )
 echo.
 python -m jarvis --doctor
+if not defined CI_MODE (
+  echo.
+  python -m jarvis --terms
+)
 echo.
 echo Done. Start Jarvis with jarvis.bat, run the tests with test.bat
 if not defined CI_MODE pause

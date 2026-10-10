@@ -110,3 +110,40 @@ test('audio settings explain a missing key and can turn off without configuring 
   await bridge.receive(update('/audio off', 2));
   assert.equal(texts[1], 'Audio replies off.');
 });
+
+test('/stop hard-stops right away, clears the queue, and only the owner can send it', async () => {
+  let stops = 0;
+  const { bridge, texts, commands } = setup({ hardStop: async () => { stops += 1; } });
+  await bridge.receive(update('open notepad', 1));
+  assert.equal(bridge.pending.size, 1);
+  await bridge.receive(update('/stop', 2, 99));
+  assert.equal(stops, 0);
+  await bridge.receive(update('/stop', 3));
+  assert.equal(stops, 1);
+  assert.equal(bridge.pending.size, 0);
+  assert.match(texts.at(-1), /Stopping now/);
+  assert.equal(commands.length, 1); // /stop never reaches the worker as a command
+});
+
+test('commands during the restart are refused; the fresh worker reports the stop', async () => {
+  let restarting = true;
+  const { bridge, texts, commands } = setup({ restarting: () => restarting });
+  await bridge.receive(update('open notepad', 1));
+  assert.equal(commands.length, 0);
+  assert.match(texts.at(-1), /restarting after \/stop/);
+  await bridge.receiveWorker({ type: 'ready', after_stop: true, released: 1 });
+  assert.match(texts.at(-1), /Stopped\. Everything Alfred was doing was cancelled/);
+  restarting = false;
+  await bridge.receiveWorker({ type: 'ready', after_stop: false });
+  assert.match(texts.at(-1), /Alfred is online/);
+});
+
+test('/start shows the privacy notice; /help lists /stop', async () => {
+  const { bridge, texts } = setup();
+  await bridge.receive(update('/start', 1));
+  assert.match(texts.at(-1), /Anthropic/);
+  assert.match(texts.at(-1), /OpenAI/);
+  assert.match(texts.at(-1), /Photon/);
+  await bridge.receive(update('/help', 2));
+  assert.match(texts.at(-1), /\/stop/);
+});
