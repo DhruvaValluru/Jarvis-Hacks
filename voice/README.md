@@ -14,14 +14,29 @@ The browser asks `server.py` to start a session. The server adds your API key, o
 
 ## Run it on your computer
 
-You need Python 3.10 or newer ([python.org](https://www.python.org/downloads/); on Windows, tick "Add python.exe to PATH").
+You need:
+- **Python 3.10 or newer** from [python.org](https://www.python.org/downloads/). On Windows, tick "Add python.exe to PATH" in the installer. On a Mac, also double-click **Install Certificates.command** in the Python folder it opens afterwards.
+- **An OpenAI API key** from [platform.openai.com](https://platform.openai.com) with credits added. GPT-Live-1 may require verifying your organization in OpenAI's settings first.
 
+**1. Get the code.** On GitHub, switch to the `jarvisvoice` branch, click **Code → Download ZIP**, and unzip it. Or, with git:
+
+```bash
+git clone -b jarvisvoice https://github.com/DhruvaValluru/Jarvis-Hacks.git
+```
+
+**2. Add your API key.** Open a terminal in the `voice` folder and save the key in a file named `api`, replacing `sk-...` with your key:
+
+```bash
+echo sk-... > api
+```
+
+The `api` file is ignored by git, so it won't be committed. Alternatively, set the `OPENAI_API_KEY` environment variable.
+
+**3. Start it.**
 - **Windows:** double-click `start.bat`.
-- **Mac:** open Terminal in this folder and run `sh start.sh`.
+- **Mac:** in Terminal, in the `voice` folder, run `sh start.sh`.
 
 The first run installs what it needs, which takes about a minute. The script then opens **http://localhost:8000**. Tap the circle and allow the microphone. Use headphones if Jarvis hears itself through your speakers. To stop, close the window or press Ctrl+C.
-
-The server reads your key from the `OPENAI_API_KEY` environment variable. If that isn't set, it reads a file named `api` next to `server.py` or at the repo root.
 
 Manual setup, if you prefer:
 
