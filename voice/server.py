@@ -5,11 +5,14 @@ OpenAI's Live API with your API key and returns OpenAI's answer, so the key
 never reaches the browser. Audio then flows directly between the browser and
 OpenAI.
 
-Run:  python server.py   then open http://localhost:8000
+Run:  python server.py --open   (opens http://localhost:8000)
 """
 
 import hmac
 import os
+import sys
+import threading
+import webbrowser
 from pathlib import Path
 
 import uvicorn
@@ -26,16 +29,18 @@ from openai import (
 )
 
 HERE = Path(__file__).resolve().parent
-KEY_FILE = HERE.parent / "api"  # the key file at the repo root
+# An "api" file holding the key, next to this file or at the repo root.
+KEY_FILES = [HERE / "api", HERE.parent / "api"]
 
 
 def load_api_key() -> str:
     key = os.environ.get("OPENAI_API_KEY", "").strip()
-    if not key and KEY_FILE.exists():
-        key = KEY_FILE.read_text().strip()
+    for key_file in KEY_FILES:
+        if not key and key_file.exists():
+            key = key_file.read_text().strip()
     if not key:
         raise SystemExit(
-            "No OpenAI API key found. Set OPENAI_API_KEY or put the key in the 'api' file at the repo root."
+            "No OpenAI API key found. Set OPENAI_API_KEY or put the key in a file named 'api' next to server.py."
         )
     return key
 
@@ -135,5 +140,9 @@ async def create_session(request: Request) -> Response:
 
 
 if __name__ == "__main__":
-    print(f"Jarvis voice on http://localhost:{PORT}  (voice: {VOICE}, brain: {BRAIN_MODEL})")
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    url = f"http://localhost:{PORT}"
+    print(f"Jarvis voice on {url}  (voice: {VOICE}, brain: {BRAIN_MODEL})")
+    if "--open" in sys.argv:
+        threading.Timer(1.5, webbrowser.open, args=[url]).start()
+    # Only this computer can connect; use a tunnel (see README) for your phone.
+    uvicorn.run(app, host="127.0.0.1", port=PORT)

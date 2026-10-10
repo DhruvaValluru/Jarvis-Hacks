@@ -14,19 +14,23 @@ The browser asks `server.py` to start a session. The server adds your API key, o
 
 ## Run it on your computer
 
-You need Python 3.10 or newer.
+You need Python 3.10 or newer ([python.org](https://www.python.org/downloads/); on Windows, tick "Add python.exe to PATH").
+
+- **Windows:** double-click `start.bat`.
+- **Mac:** open Terminal in this folder and run `sh start.sh`.
+
+The first run installs what it needs, which takes about a minute. The script then opens **http://localhost:8000**. Tap the circle and allow the microphone. Use headphones if Jarvis hears itself through your speakers. To stop, close the window or press Ctrl+C.
+
+The server reads your key from the `OPENAI_API_KEY` environment variable. If that isn't set, it reads a file named `api` next to `server.py` or at the repo root.
+
+Manual setup, if you prefer:
 
 ```bash
-cd voice
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python server.py
+python server.py --open
 ```
-
-Open **http://localhost:8000**, tap the circle, and allow the microphone.
-
-The server reads your key from the `OPENAI_API_KEY` environment variable. If that isn't set, it reads the `api` file at the repo root.
 
 ## Use it from your phone
 
