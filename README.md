@@ -6,6 +6,8 @@ An Iron Man–style "Jarvis": a voice-controlled assistant that sees and acts ac
 
 More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (general design) · [docs/APPLE_PLATFORM.md](docs/APPLE_PLATFORM.md) (Apple APIs and limits)
 
+**Try it now:** the Phase 0 Windows MVP is in [windows-mvp/](windows-mvp/README.md). Run `setup.bat`, then `jarvis.bat`, and talk to it.
+
 ## 1. Goals
 
 1. **Awareness:** Jarvis knows what's happening on every device: apps, windows, documents, system events, and which device you're using.

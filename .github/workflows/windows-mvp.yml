@@ -1,0 +1,22 @@
+name: windows-mvp
+on:
+  push:
+    paths: ["windows-mvp/**", ".github/workflows/windows-mvp.yml"]
+  pull_request:
+    paths: ["windows-mvp/**", ".github/workflows/windows-mvp.yml"]
+  workflow_dispatch:
+jobs:
+  smoke:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows-mvp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pytest
+      - run: python -m pytest -q tests/test_core.py
+      - run: python tests/smoke_windows.py
+      - run: python -m jarvis --do "what time is it" --quiet
