@@ -32,10 +32,10 @@ Legend: `[ ]` open · `[x]` done · `[-]` dropped · `needs:` must be done first
 ## 0. Integration (do these first; they unblock everyone)
 
 - [ ] **0.1** Merge PR #5 (shared test spec) into `main`. *Done when:* `main` has `test.bat`, `requirements.lock.txt`, and CI `spec-test` green.
-- [ ] **0.2** Merge PR #4 (computer use) after merging `main` into `eshaan-work`. needs: 0.1. *Done when:* `test.bat` passes in CI on the merged head. Resolve `tests/test_core.py` and `__main__.py` conflicts by keeping both sides.
-- [ ] **0.3** Add `JARVIS_COMPUTER_USE` and `JARVIS_MAX_STEPS` to the test profile (`doctor.TEST_PROFILE` and `test.bat`), bump `SPEC_VERSION` to 2. needs: 0.2.
-- [ ] **0.4** Open a PR for `Saatvik-Branch` (Telegram). Before it merges: (a) merge `main`; (b) move its CI steps into the new `spec-test` job (Node 22, `npm ci`, `npm test`) instead of the old job; (c) add Node 22 and the `package-lock.json` to the spec in TESTING.md and the doctor (spec bump); (d) add `tests/test_telegram.py` to `test.bat`. needs: 0.1.
-- [ ] **0.5** Unify the reply and confirm hooks: Telegram adds `on_reply`/`on_confirm` to `Jarvis`; computer use adds its own confirms. Make every confirmation go through `Jarvis.confirm`, so a Telegram user gets the same y/N for Send/Delete and computer-use clicks. needs: 0.2, 0.4.
+- [x] **0.2** Merge PR #4 (computer use) after merging `main` into `eshaan-work`. needs: 0.1. *Done when:* `test.bat` passes in CI on the merged head. Resolve `tests/test_core.py` and `__main__.py` conflicts by keeping both sides.
+- [x] **0.3** Add `JARVIS_COMPUTER_USE` and `JARVIS_MAX_STEPS` to the test profile (`doctor.TEST_PROFILE` and `test.bat`), bump `SPEC_VERSION` to 2. needs: 0.2.
+- [x] **0.4** Open a PR for `Saatvik-Branch` (Telegram). Before it merges: (a) merge `main`; (b) move its CI steps into the new `spec-test` job (Node 22, `npm ci`, `npm test`) instead of the old job; (c) add Node 22 and the `package-lock.json` to the spec in TESTING.md and the doctor (spec bump); (d) add `tests/test_telegram.py` to `test.bat`. needs: 0.1.
+- [x] **0.5** Unify the reply and confirm hooks: Telegram adds `on_reply`/`on_confirm` to `Jarvis`; computer use adds its own confirms. Make every confirmation go through `Jarvis.confirm`, so a Telegram user gets the same y/N for Send/Delete and computer-use clicks. needs: 0.2, 0.4.
 - [ ] **0.6** Delete the stale branches `mvp` and `claude/sharp-bohr-sglils` (already merged). Ask the repo owner first.
 
 ## A. Core brain (Claude loop, routing, memory)
@@ -61,17 +61,18 @@ Legend: `[ ]` open · `[x]` done · `[-]` dropped · `needs:` must be done first
 - [ ] **B8** Elevated apps: document and test running Jarvis elevated, or with UI access, so it can control admin windows.
 - [ ] **B9** UIA performance: cache the control tree per window and cap walks at 2 s. *Done when:* `ui_list_controls` on Word takes under 2 s.
 
-## C. Computer use (vision fallback) — branch `eshaan-work`, PR #4
+## C. Computer use (vision fallback) — merged from `eshaan-work`
 
-- [x] **C1** Input and capture: DPI awareness, 1280 px screenshots, coordinate mapping, SendInput. (PR #4)
-- [x] **C2** Brain wiring for `computer_toolset_20260801`: halt-on-failure, `toolset_name` echo. (PR #4)
-- [x] **C3** Safety: risky-click confirm, password-field refusal, lock screen/UAC stop, corner kill switch. (PR #4)
-- [x] **C4** Offline tests and a Windows Notepad click-and-type smoke test. (PR #4)
+- [x] **C1** Input and capture: DPI awareness, 1280 px screenshots, coordinate mapping, SendInput. (merged)
+- [x] **C2** Brain wiring for `computer_toolset_20260801`: halt-on-failure, `toolset_name` echo. (merged)
+- [x] **C3** Safety: risky-click confirm, password-field refusal, lock screen/UAC stop, corner kill switch. (merged)
+- [x] **C4** Offline tests and a Windows Notepad click-and-type smoke test. (merged)
 - [ ] **C5** Manual end-to-end run with a real key: Paint "draw a square", one browser task, one game or launcher. Record results in the PR. needs: 0.2.
 - [ ] **C6** Confirm before pressing Enter in chat and email apps (Slack, Teams, Discord, Outlook, WhatsApp).
 - [ ] **C7** Measure cost and latency per step; compare 1024 vs 1280 px. Write the numbers in `docs/COMPUTER_USE_PLAN.md`.
 - [ ] **C8** Multi-monitor: capture the monitor the target window is on.
 - [ ] **C9** "Jarvis is driving" overlay with a Stop button, plus a global stop hotkey.
+- [ ] **C10** Remote stop for computer use: the corner kill switch only works for someone at the PC. When a task comes from Telegram, `/stop` must abort computer use mid-turn. needs: E2.
 
 ## D. Voice (local)
 
@@ -83,13 +84,14 @@ Legend: `[ ]` open · `[x]` done · `[-]` dropped · `needs:` must be done first
 - [ ] **D6** Natural voice option. Pick one TTS service for the whole project (shared with E3) and add it behind `JARVIS_TTS=sapi|<service>`.
 - [ ] **D7** Global push-to-talk hotkey that works when the console isn't focused.
 
-## E. Remote control (Telegram, phone) — branch `Saatvik-Branch`
+## E. Remote control (Telegram, phone) — merged from `Saatvik-Branch`
 
-- [x] **E1** Telegram bridge through Photon Spectrum, owner-only, text and voice notes. (`Saatvik-Branch`, no PR yet)
-- [ ] **E2** Integration work in 0.4 and 0.5.
-- [ ] **E3** Build the voice service from `windows-mvp/VOICE_API.md` (`POST /speech`, `POST /transcribe`), or decide to use OpenAI directly. Record the decision here.
+- [x] **E1** Telegram bridge through Photon Spectrum, owner-only, text and voice notes, OpenAI transcription and spoken replies. (merged from `Saatvik-Branch`)
+- [x] **E2** Integration work in 0.4 and 0.5. (Telegram tests in `test.bat` and CI; approvals go through `Jarvis.confirm`, so computer-use and Send clicks ask in Telegram.)
+- [ ] **E3** Voice service from `windows-mvp/VOICE_API.md` (`POST /speech`, `POST /transcribe`). *Current state:* the Telegram bridge calls OpenAI directly for voice notes and spoken replies; the custom service is optional. Decide whether to keep OpenAI or build the service, and record it here.
 - [ ] **E4** Confirmations over Telegram: inline Yes/No buttons, with a 60 s timeout that defaults to No. needs: 0.5.
 - [ ] **E5** Send screenshots to Telegram on request ("show me my screen").
+- [ ] **E7** Remote computer-use guardrails: decide whether computer use is allowed from Telegram by default (screenshots of the PC leave the house, and nobody is at the PC to stop the mouse). Add `JARVIS_REMOTE_COMPUTER_USE` if needed.
 - [ ] **E6** Security review of the remote path: owner check, replay of old messages, what happens if the bot token leaks, rate limits. Write findings in `docs/CREDENTIALS_AND_USER_SECURITY.md`.
 
 ## F. Safety and security (applies to every area)
@@ -100,6 +102,7 @@ Legend: `[ ]` open · `[x]` done · `[-]` dropped · `needs:` must be done first
 - [ ] **F4** Per-app permissions (allow, ask, never) for UIA and computer use.
 - [ ] **F5** Audit log viewer: a local page listing actions with filters.
 - [ ] **F6** User-approved credential fill (plan in `docs/CREDENTIALS_AND_USER_SECURITY.md`). Not before F2.
+- [ ] **F8** Third-party data map: list what goes to Anthropic (prompts, screenshots), OpenAI (voice notes, reply audio) and Photon (Telegram messages), and show it to users in the README.
 - [ ] **F7** Secrets hygiene: no keys in Git (scan in CI), `.env` only, and document key rotation.
 
 ## G. Testing spec and CI
@@ -119,9 +122,10 @@ Legend: `[ ]` open · `[x]` done · `[-]` dropped · `needs:` must be done first
 
 ## I. Phase 2: two PCs (hub and mesh)
 
-- [ ] **I1** Hub process (FastAPI): device registry, routes commands to the right PC.
+- [ ] **I1** Pick the hub host (our FastAPI hub or Claude Managed Agents) per `docs/ARCHITECTURE.md` section 3.6, and write the job protocol (job, result, heartbeat) between hub and PC workers.
+- [ ] **I6** Hub process: device registry, task log (queued/running/done/failed), routes jobs to the right PC worker. needs: I1.
 - [ ] **I2** Pairing with a QR code and per-device keys; transport over Tailscale or WebSocket with TLS.
-- [ ] **I3** Expose each PC's tools as an MCP server; the hub's Claude calls tools on any PC.
+- [ ] **I3** PC worker: wrap today's `windows-mvp` brain as a worker that runs whole jobs locally, sends heartbeats, and releases all keys and mouse buttons and stops if the hub goes silent. needs: I1.
 - [ ] **I4** Handoff: "send this tab/file/clipboard to my laptop".
 - [ ] **I5** "What's my desktop doing?" from another PC.
 

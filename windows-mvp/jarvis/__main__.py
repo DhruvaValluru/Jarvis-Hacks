@@ -25,9 +25,11 @@ def console_confirm(reason: str) -> bool:
 
 
 class Jarvis:
-    def __init__(self, cfg: config.Config, speaker=None):
+    def __init__(self, cfg: config.Config, speaker=None, *, on_reply=None, on_confirm=None):
         self.cfg = cfg
         self.speaker = speaker
+        self.on_reply = on_reply
+        self.on_confirm = on_confirm
         self.brain = None
         if cfg.has_llm:
             from .brain import Brain
@@ -36,11 +38,16 @@ class Jarvis:
         registry.announce = self.reply
 
     def confirm(self, reason: str) -> bool:
+        if self.on_confirm:
+            return self.on_confirm(reason)
         if self.speaker:
             self.speaker.say("Should I go ahead?")
         return console_confirm(reason)
 
     def reply(self, text: str) -> None:
+        if self.on_reply:
+            self.on_reply(text)
+            return
         print(f"Jarvis: {text}")
         if self.speaker:
             self.speaker.say(text)

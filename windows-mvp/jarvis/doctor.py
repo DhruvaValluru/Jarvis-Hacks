@@ -13,7 +13,7 @@ import sys
 
 from . import config
 
-SPEC_VERSION = "1"
+SPEC_VERSION = "2"
 PYTHON = (3, 12)
 # Settings every test run uses (test.bat sets these; CI too).
 TEST_PROFILE = {
@@ -21,7 +21,10 @@ TEST_PROFILE = {
     "JARVIS_EFFORT": "low",
     "JARVIS_WHISPER_MODEL": "base.en",
     "JARVIS_FALLBACKS": "1",
+    "JARVIS_COMPUTER_USE": "1",
+    "JARVIS_MAX_STEPS": "40",
 }
+NODE_MAJOR = 22  # Telegram bridge (windows-mvp/telegram, exact deps in package-lock.json)
 
 
 def _norm(name: str) -> str:
@@ -63,6 +66,14 @@ def check() -> tuple[bool, list[str]]:
     lines.append(f"[{'ok' if not drift else '!!'}] Test profile" + (" differs: " + ", ".join(drift) if drift else ""))
     lines.append(f"[{'ok' if cfg.has_llm else '--'}] API key {'set' if cfg.has_llm else 'not set (Claude tests skipped)'}")
 
+    node = _node_major()
+    if node is None:
+        lines.append("[--] Node.js not found (only needed for the Telegram bridge)")
+    else:
+        good = node == NODE_MAJOR
+        ok &= good
+        lines.append(f"[{'ok' if good else 'XX'}] Node.js {node} (spec {NODE_MAJOR})")
+
     if win:
         lines.append(_optional("Office (COM)", _has_office))
         lines.append(_optional("Microphone", _has_mic))
@@ -70,9 +81,19 @@ def check() -> tuple[bool, list[str]]:
     # Hash what is actually installed, so any drift gives a different fingerprint.
     actual = sorted((n, installed.get(n)) for n in lock_pins())
     profile = sorted((k, os.environ.get(k, v)) for k, v in TEST_PROFILE.items())
-    fp = hashlib.sha256(f"{SPEC_VERSION}|{py}|{actual}|{profile}".encode()).hexdigest()[:12]
+    fp = hashlib.sha256(f"{SPEC_VERSION}|{py}|{actual}|{profile}|node{node}".encode()).hexdigest()[:12]
     lines.append(f"SPEC v{SPEC_VERSION} fingerprint {fp} -> {'MATCHES SPEC' if ok else 'DOES NOT MATCH SPEC'}")
     return ok, lines
+
+
+def _node_major() -> int | None:
+    import subprocess
+
+    try:
+        out = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=10).stdout
+        return int(out.strip().lstrip("v").split(".")[0])
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
 
 
 def _optional(label, probe) -> str:

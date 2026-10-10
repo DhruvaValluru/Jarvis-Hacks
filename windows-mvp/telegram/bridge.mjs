@@ -1,0 +1,85 @@
+import { randomUUID } from 'node:crypto';
+
+export const HELP = 'Jarvis controls your Windows PC from this private chat.\n'
+  + 'Try: open notepad, volume 30, what is running, or timer for 10 seconds.\n'
+  + '/reset starts a fresh conversation. /audio on or /audio off toggles spoken replies.\n'
+  + 'Spoken replies use an AI-generated voice.\n'
+  + 'Actions needing permission ask for /approve CODE or /deny CODE.';
+
+export class Bridge {
+  constructor({ ownerId, sendText, sendAudio, synthesize, writeCommand, log = console.log,
+    now = () => Date.now() }) {
+    Object.assign(this, { ownerId: String(ownerId || ''), sendText, sendAudio,
+      synthesize, writeCommand, log, now });
+    this.audio = Boolean(synthesize);
+    this.seen = new Set();
+    this.pending = new Set();
+  }
+
+  async receive(update) {
+    const message = update.message;
+    if (!message || message.chat?.type !== 'private' || message.from?.is_bot) return;
+    if (this.seen.has(update.update_id)) return;
+    this.seen.add(update.update_id);
+    if (this.seen.size > 1000) this.seen.delete(this.seen.values().next().value);
+    // Discovery never starts the Windows worker or grants access automatically.
+    if (!this.ownerId) {
+      this.log(`Telegram user ID: ${message.from?.id}. Set TELEGRAM_OWNER_ID locally and restart.`);
+      return;
+    }
+    if (String(message.from?.id) !== this.ownerId || String(message.chat.id) !== this.ownerId) return;
+    if (message.date * 1000 < this.now() - 120_000) {
+      await this.sendText('Skipped an old message. Please send your command again.');
+      return;
+    }
+    const text = (message.text || '').trim();
+    if (!text) {
+      await this.sendText('Send a typed command for now. Voice-note input is not enabled yet.');
+      return;
+    }
+    if (text === '/start' || text === '/help') return this.sendText(HELP);
+    if (text === '/audio on' || text === '/audio off') {
+      this.audio = text.endsWith('on') && Boolean(this.synthesize);
+      return this.sendText(this.audio ? 'Audio replies on (AI-generated voice).'
+        : text.endsWith('off') ? 'Audio replies off.'
+        : 'Set OPENAI_API_KEY on the PC and restart to enable audio replies.');
+    }
+    const approval = /^\/(approve|deny) ([a-f0-9]{8})$/i.exec(text);
+    if (approval) {
+      this.writeCommand({ type: 'approval', token: approval[2].toLowerCase(),
+        approved: approval[1].toLowerCase() === 'approve' });
+      return;
+    }
+    if (text.startsWith('/') && text !== '/reset') return this.sendText(HELP);
+    if (text.length > 6000) return this.sendText('That command is too long. Keep it under 6,000 characters.');
+    if (this.pending.size >= 10) return this.sendText('The command queue is full. Wait for a reply before sending more.');
+    const id = randomUUID();
+    this.pending.add(id);
+    try {
+      this.writeCommand({ type: 'command', id, text: text === '/reset' ? 'reset' : text });
+    } catch (error) {
+      this.pending.delete(id);
+      throw error;
+    }
+  }
+
+  async receiveWorker(message) {
+    if (!this.ownerId) return;
+    if (message.type === 'done') { this.pending.delete(message.id); return; }
+    if (message.type === 'ready') return this.sendText('Jarvis is online on your Windows PC. Send /help for commands.');
+    if (message.type === 'approval') {
+      return this.sendText(`Allow this action?\n${message.reason}\n\n`
+        + `/approve ${message.token}\n/deny ${message.token}\nExpires in ${message.timeout} seconds.`);
+    }
+    if (message.type !== 'reply' && message.type !== 'notice') return;
+    await this.sendText(message.text);
+    if (message.type === 'reply' && this.audio && this.synthesize) {
+      try {
+        const audio = await this.synthesize(message.text);
+        await this.sendAudio(audio);
+      } catch {
+        this.log('Audio generation/delivery failed; the text reply was delivered.');
+      }
+    }
+  }
+}

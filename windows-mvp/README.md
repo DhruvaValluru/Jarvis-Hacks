@@ -39,6 +39,15 @@ Run `.\jarvis.bat --text`, then try these in order:
 
 If something goes wrong, copy the terminal output (the `-> tool {...}` lines show each step) and the last actions from the log: `Get-Content $env:LOCALAPPDATA\Jarvis\audit.jsonl -Tail 20`.
 
+## Telegram + OpenAI
+
+Control this PC from a private Telegram chat using Photon's Spectrum runtime.
+Replies are text plus optional OpenAI audio. Run `setup-telegram.bat`,
+configure your bot token and owner ID, then start `jarvis-telegram.bat`.
+See [TELEGRAM.md](TELEGRAM.md) for Photon credentials, bot creation, pairing and audio setup.
+OpenAI directly transcribes incoming voice notes and generates spoken replies.
+An optional custom service can replace both through [VOICE_API.md](VOICE_API.md).
+
 ## Things to try
 
 | Say or type | What happens |
