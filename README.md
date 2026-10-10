@@ -2,203 +2,161 @@
 
 An Iron Man–style "Jarvis": a voice-controlled assistant that sees and acts across all of your devices.
 
-**Primary target: Windows ↔ Windows.** Windows gives the deepest system access with the fewest gatekeepers. Macs, iPhones and iPads can join later as secondary nodes.
+**Primary target: Windows ↔ Windows.** It gives the deepest system access with the fewest gatekeepers. Macs, iPhones and iPads join later as secondary nodes.
 
-Other design docs:
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): general design (hub, voice pipeline, memory, security)
-- [docs/APPLE_PLATFORM.md](docs/APPLE_PLATFORM.md): Apple-specific APIs, permissions and limits
-
----
+More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (general design) · [docs/APPLE_PLATFORM.md](docs/APPLE_PLATFORM.md) (Apple APIs and limits)
 
 ## 1. Goals
 
-1. **Awareness.** Jarvis always knows what's happening on every PC: apps, windows, documents, activity, system events.
-2. **Direct control.** Jarvis acts *inside* apps by calling their UI elements, scripting and plugin APIs directly. It doesn't move the mouse or read screenshots, and it can work in several apps at once, in the background.
-3. **Cross-device.** Any device can see and command any other.
-4. **Voice.** Talk to Jarvis and get a spoken response in under a second.
+1. **Awareness:** Jarvis knows what's happening on every device: apps, windows, documents, system events, and which device you're using.
+2. **Direct control:** Jarvis acts *inside* apps through their UI elements, scripting and plugin APIs. It doesn't move the mouse or read screenshots, and it works in several apps at once, in the background.
+3. **Cross-device:** any device can see and command any other.
+4. **Voice:** talk to Jarvis and hear a reply in under ~800 ms.
 
-**Rule: go only as deep as a requirement needs.** No requirement needs custom kernel code. The deepest layer we use is the set of Windows-approved extension frameworks (level 6), and only for specific features.
+"Sync" means **awareness + on-demand viewing + remote action + handoff** (URLs, files, clipboard). Copying the live in-memory state of any app to another device isn't possible, so it's out of scope.
 
----
+## 2. System architecture
 
-## 2. Depth levels on Windows
+```
+                 ┌──────────────────────── HUB ("brain") ────────────────────────┐
+  voice ───────▶ │ Voice gateway ─▶ Intent router ─┬─ fast path (no LLM, ~50 ms) │
+                 │                                 └─ Orchestrator LLM (tools)   │
+                 │ Device registry · Context store · Memory/timeline · Policy    │
+                 │ Event bus · Audit log                                         │
+                 └──────▲─────────────────────▲──────────────────────▲───────────┘
+                        │ encrypted mesh (Tailscale / WebSocket + mTLS)
+              ┌─────────┴──────────┐  ┌───────┴────────┐  ┌──────────┴─────────┐
+              │ Windows PC (full)  │  │ Mac (full)     │  │ Phone (thin client)│
+              │ agent + service    │  │ agent          │  │ voice, notifs,     │
+              │ MCP tool server    │  │ MCP tool server│  │ confirmations      │
+              └────────────────────┘  └────────────────┘  └────────────────────┘
+                 + browser extension · cloud APIs · smart home (Home Assistant)
+```
 
-| Level | What it is | Windows technology | Needs | Jarvis uses it for |
-|---|---|---|---|---|
-| 1 | Cloud APIs | Microsoft Graph, Spotify, Slack, Gmail… | OAuth | Mail, calendar, music, chat |
-| 2 | App scripting | **COM automation** (Word, Excel, PowerPoint, Outlook), PowerShell, WMI, URI protocols | user | Editing documents and data with no UI involved; system settings |
-| 3 | Accessibility / UI Automation | **UI Automation (UIA)** element patterns and events | user (admin to control elevated apps) | **Reading and controlling any app's UI, in the background, in parallel** |
-| 4 | Screen and input | Windows Graphics Capture; input injection (fallback only) | user | On-demand screenshots and streaming; fallback for apps without UIA |
-| 5 | Privileged service | **Windows Service (SYSTEM)** + **Event Tracing for Windows (ETW)** | admin | System-wide process, file, registry and network events; power, services |
-| 6 | OS-approved extension frameworks | **Windows Filtering Platform** rules, **Cloud Files API**, user-mode drivers (virtual display, input), virtual audio driver | admin; Microsoft signing for drivers only | Network control, "Jarvis Drive", virtual mic, monitor and input |
-| 7 | Custom kernel code | — | — | **Not used.** No requirement needs it. It risks blue-screens and has heavy signing requirements. |
+- **Device agents** expose their capabilities as **MCP tool servers** with a capability manifest. The hub's LLM is the MCP client.
+- **Hub** runs on an always-on PC or a small VM:
+  - It tracks devices, live per-device state, and the device you're using (by latest input).
+  - It plans multi-step tasks across devices.
+  - CRDTs (data types that merge cleanly) handle shared data; hybrid logical clocks order events across devices.
+- **Mesh:** Tailscale to start. Devices pair by QR code with per-device revocable keys. Phones are woken with push (APNs/FCM) because they can't hold sockets in the background.
+- **Memory:** a searchable timeline of apps, docs, URLs and transcripts (SQLite/Postgres + vector index). It stores text rather than screenshots, is encrypted, has retention limits, and lets you exclude apps.
 
-### Where "what an app is working on" comes from
-Ranked from most to least reliable:
-1. **The app's own plugin or extension API:** VS Code extensions, Office add-ins, browser extension.
-2. **COM / scripting interfaces:** the full Office document model.
-3. **Cloud API** of the service.
-4. **UI Automation tree:** works on almost any app with no cooperation from it.
-5. **Vision on screenshots:** last resort, for games and custom-drawn UIs.
+### Voice pipeline (target: under ~800 ms to first audio)
 
-**A SYSTEM service (level 5) does *not* see inside apps.** It sees processes, files and network activity, and it runs in session 0 with no access to the desktop. App-level insight comes from the user-session agent (levels 2 to 4).
+| Stage | Choice | Note |
+|---|---|---|
+| Wake word | openWakeWord | On-device, always on |
+| End of speech | Silero VAD | Bad end-of-speech detection is the main reason assistants feel slow |
+| Speech-to-text | faster-whisper or a streaming cloud service | Streams partial transcripts |
+| Router | Rules or a small classifier | Simple commands skip the LLM entirely |
+| LLM | Fast model for chat, larger one for plans | Speaks the first sentence while still generating |
+| Text-to-speech | Piper or a cloud voice | Streams audio |
 
-**Out of scope:** injecting code into other processes or reading their memory. It breaks with every app update, gets flagged as malware, and levels 1 to 6 already provide real app internals.
+You can interrupt it mid-sentence (barge-in, which needs echo cancellation). Only one device answers when several hear you. The reply plays on the device you're using. Long tasks get an "On it" now and a report later.
 
----
+## 3. Windows depth levels
 
-## 3. Per-PC architecture
+| Level | Windows technology | Needs | Used for |
+|---|---|---|---|
+| 1 Cloud APIs | Microsoft Graph, Spotify, Slack, Gmail | OAuth | Mail, calendar, music, chat |
+| 2 App scripting | **COM** (Word/Excel/PowerPoint/Outlook), PowerShell, WMI, URI protocols | user | Documents and settings with no UI |
+| 3 UI Automation | **UIA** patterns and events | user (admin for elevated apps) | **Reading and controlling any app, in the background, in parallel** |
+| 4 Screen and input | Windows Graphics Capture; input injection (fallback) | user | On-demand screenshots and streaming |
+| 5 Privileged service | **Windows Service (SYSTEM) + ETW** | admin | System-wide process, file, registry and network events |
+| 6 OS extension frameworks | **Filtering Platform rules, Cloud Files API**, user-mode drivers, virtual audio driver | admin; Microsoft signing for drivers only | Network control, "Jarvis Drive", virtual mic, monitor and input |
+| 7 Custom kernel code | — | — | **Not used.** No requirement needs it, and it risks blue-screens. |
 
-Each Windows PC runs two cooperating processes. They talk over a local named pipe that only these two processes can access.
+**Where app internals come from**, most to least reliable:
+1. The app's plugin API (VS Code, Office add-ins, browser extension)
+2. COM
+3. The cloud API
+4. The UI Automation tree
+5. Vision on screenshots, as a last resort
+
+A SYSTEM service does **not** see inside apps. It runs in session 0 with no desktop. Injecting into other processes or reading their memory is out of scope.
+
+## 4. Per-PC architecture
 
 ```
 ┌──────────────────────────── Windows PC ─────────────────────────────┐
-│                                                                     │
-│  User-session agent  (runs in your login session, levels 2–4)       │
-│   • UI Automation reader/actor   • COM / PowerShell bridges         │
-│   • Screen capture (on demand)   • Clipboard, active window         │
-│   • Voice I/O (mic, wake word, TTS)  • Tray UI + confirmations      │
-│   • Exposes tools as an MCP server                                  │
+│  User-session agent  (your login session, levels 2–4)               │
+│   UI Automation · COM / PowerShell · screen capture · clipboard     │
+│   voice I/O · tray UI + confirmations · MCP tool server             │
 │                │ local named pipe (ACL-restricted)                  │
-│  Jarvis Service  (Windows Service as SYSTEM, levels 5–6)            │
-│   • ETW consumer: process/file/registry/network events              │
-│   • WFP network rules         • Cloud Files "Jarvis Drive"          │
-│   • Power, services, updates  • Optional signed drivers (level 6)   │
-│   • Encrypted link to the hub / other PCs                           │
+│  Jarvis Service  (SYSTEM, levels 5–6)                               │
+│   ETW consumer · network rules · Cloud Files "Jarvis Drive"         │
+│   power / services / updates · optional signed drivers · hub link   │
 └─────────────────────────────────────────────────────────────────────┘
-                 │  encrypted mesh (Tailscale / WebSocket + mTLS)
-        ┌────────┴────────┐
-        │  Hub ("brain")  │  device registry · context store · orchestrator LLM
-        │  (one PC or VM) │  intent router · memory/timeline · policy + audit log
-        └─────────────────┘
 ```
 
----
-
-## 4. Capabilities by level
-
-### Level 2: COM, PowerShell, WMI
-- **Word / Excel / PowerPoint / Outlook:** read and write documents, cells, slides, emails and calendar through their object models. No UI is involved.
-- **PowerShell / WMI:** processes, services, network adapters, display, power plans, installed apps, scheduled tasks, Windows settings.
-- **URI protocols:** `ms-settings:`, `spotify:`, `msteams:` and others open specific screens.
-
-### Level 3: UI Automation (the main way to control apps)
-| Action | UI Automation interface |
+| UI Automation action | Interface |
 |---|---|
 | Click a button or menu item | `InvokePattern` |
-| Set the text in a field (no keystrokes) | `ValuePattern.SetValue` |
+| Set field text (no keystrokes) | `ValuePattern.SetValue` |
 | Read a document, selection or field | `TextPattern`, `ValuePattern` |
-| Check, select, expand | `TogglePattern`, `SelectionItemPattern`, `ExpandCollapsePattern` |
-| Scroll, minimize, close, move | `ScrollPattern`, `WindowPattern`, `TransformPattern` |
+| Check, select, expand, scroll, window ops | `Toggle` / `SelectionItem` / `ExpandCollapse` / `Scroll` / `Window` |
 | React to changes | Focus-changed, property-changed and structure-changed events |
 
-- Works on **background windows** and on **several apps in parallel**. It doesn't use the mouse.
-- Works across Win32, WPF, WinForms, UWP/WinUI, Chromium and Electron apps. Electron apps expose their accessibility tree when an assistive client is present.
+| Level 6 feature | Technology | Driver / signing |
+|---|---|---|
+| Per-app network allow/block | Filtering Platform rules | None |
+| "Jarvis Drive" (every PC's files in File Explorer) | Cloud Files API | None |
+| Virtual monitor / virtual input | User-mode drivers | Microsoft attestation |
+| Virtual microphone | Virtual audio driver | Microsoft attestation |
 
-### Level 4: screen and input
-- Windows Graphics Capture for screenshots and streaming of a single window or the whole screen, **on demand only**.
-- Simulated input is a **fallback** for apps without UI Automation support.
+**Windows blocks, by design:**
+- The lock screen, sign-in screen, admin-approval (UAC) prompts and Ctrl+Alt+Del.
+- Elevated apps, unless the agent is also elevated or has UI-access rights.
+- DRM video, protected processes, and the contents of other apps' encrypted traffic.
+- UI Automation in games and custom-drawn UIs; vision is the fallback.
+- Unsigned binaries, which antivirus will flag.
 
-### Level 5: privileged service and ETW
-- **ETW (no driver needed):**
-  - Process start and exit, with command lines
-  - File create, write and rename
-  - Registry changes
-  - Network connections per process
-  - Many app- and OS-specific event sources
-- Service control, power (sleep, wake, shutdown, lock), Windows Update status, device inventory.
+## 5. Example workflows
 
-### Level 6: OS-approved extension frameworks
-| Feature | Technology | Driver? | Signing |
-|---|---|---|---|
-| Per-app network allow/block ("study mode") | Windows Filtering Platform rules | No | — |
-| "Jarvis Drive": every PC's files in File Explorer | Cloud Files API (how OneDrive works) | No | — |
-| Virtual monitor (stream or extend to another device) | Indirect display driver (user-mode) | Yes | Microsoft attestation |
-| Virtual input devices | User-mode driver | Yes | Microsoft attestation |
-| Virtual microphone (phone or another PC as mic) | Virtual audio driver | Yes (usually kernel) | Microsoft attestation |
-| Deep packet inspection | Filtering Platform callout driver | Yes (kernel) | **Not planned** |
+1. **"Reply to Sam on Slack that I'll be late"** while you're in Word. Uses the Slack API, or UI Automation sets the message box and invokes Send. Slack stays in the background.
+2. **"Put the Excel numbers into the report."** COM reads the Excel range and writes a Word table. No UI.
+3. **"Tell me when my build finishes."** ETW catches the process exit, UI Automation reads the terminal's last lines, and Jarvis speaks the result on the device you're using.
+4. **From the laptop: "What's my desktop doing?"** Active app, window titles and recent events. "Show me" adds a screenshot.
+5. **"Study mode for two hours."** Network rules block sites, PowerShell turns on Do Not Disturb, and Discord is closed.
+6. **"Fill this form, rename my screenshots, pause the music,"** run in parallel through the browser extension, file APIs and Spotify API.
 
----
+## 6. Security
 
-## 5. What we can't do on Windows (by design)
-
-- Automate the **lock screen, sign-in screen, admin-approval (UAC) prompts or Ctrl+Alt+Del**. They run on a separate secure desktop.
-- Control **elevated (admin) apps from a non-elevated agent**. The user-session agent must run elevated, or be signed and installed in Program Files with UI-access rights.
-- Capture **DRM-protected video** (it renders black) or touch **protected processes** such as antivirus.
-- Read the **contents of other apps' encrypted network traffic**. We see destinations, not contents.
-- Use UI Automation in **games and some custom-drawn UIs**. Vision is the fallback.
-- **Ship unsigned.** Antivirus will flag an automation agent, so all binaries are code-signed.
-
----
-
-## 6. Example workflows
-
-1. **"Reply to Sam on Slack that I'll be 10 minutes late"**, while you're typing in Word.
-   - Use the Slack API if available.
-   - Otherwise Jarvis finds the message box through UI Automation, sets its value and invokes Send. Slack never comes to the front.
-2. **"Put this quarter's numbers from Excel into the report."** COM reads the Excel range and writes a table into Word. No UI.
-3. **"Tell me when my build finishes."** ETW catches the build process exiting, UI Automation reads the terminal's last lines, and Jarvis speaks the result on the device you're using.
-4. **From the laptop: "What's my desktop doing?"** Combines the active app, window titles and recent ETW activity. "Show me" adds a screenshot.
-5. **"Open the PDF I'm reading on the desktop, on my laptop, same page."** UI Automation gives the document and page, the Jarvis Drive provides the file, and the laptop opens it at that page.
-6. **"Study mode for two hours."** Filtering Platform rules block chosen sites, PowerShell turns on Do Not Disturb and closes Discord, and a timer reports back.
-7. **"Fill in this form, rename my screenshots by date, and pause the music"**, all running in parallel:
-   - the browser extension fills the form
-   - file APIs rename the screenshots
-   - the Spotify API pauses playback
-8. **"Use my phone as the mic"** (later phase): a virtual audio driver receives the phone's audio stream.
-
----
-
-## 7. Security
-
-- **Treat what's on screen as untrusted.** Text Jarvis reads from screens, emails and web pages is data, never instructions. This is the main defense against prompt injection.
+- **Screen, email and web content is untrusted data, never instructions.** This is the main defense against prompt injection.
 - **Permission tiers:**
   - Reading is automatic.
   - Low-risk actions (media, volume, windows) run automatically.
-  - Sending, deleting, buying or posting needs confirmation on a trusted device (Windows Hello or a phone tap).
+  - Send, delete, buy and post need confirmation (Windows Hello or a phone tap).
   - Passwords, payments and admin prompts are never automated.
 - **Voice is not authentication.**
-- **Audit log** of every action: device, tool, triggering request and result. **Kill switch** to stop all agents at once.
-- **Encrypted transport:** mutual TLS between devices, a per-device revocable key stored in the Windows Credential Manager / TPM, and an ACL-restricted named pipe between service and agent.
-- **Code signing** on every binary. Drivers are only added through Microsoft's attestation signing.
+- Audit log of every action, plus a kill switch that stops all agents.
+- Mutual TLS between devices, keys in Credential Manager / TPM, an ACL-restricted pipe, and code signing on every binary.
 
----
+## 7. Deployment
 
-## 8. Deployment
+- **Installer:** signed MSI/MSIX that installs the service, the user agent (auto-start at login) and any optional drivers.
+- **Signing:** a code-signing certificate for the app. An **EV certificate + Microsoft Partner Center** are needed only for level 6 drivers; use test-signing on dev machines.
+- **Privileges:** admin once at install. The service runs as SYSTEM; the agent runs elevated or with UI-access rights.
 
-| Item | Requirement |
-|---|---|
-| Installer | Signed MSI or MSIX; installs the service, the user-session agent (auto-start at login) and optional drivers |
-| Code signing | Code-signing certificate for the app; **EV certificate + Microsoft Partner Center** only for level 6 drivers |
-| Driver development | Microsoft's documented test-signing setup on your own dev machines; attestation signing for release |
-| Privileges | Admin once at install. The service runs as SYSTEM; the agent runs in the user session, elevated or with UI-access rights. |
-| Updates | Signed auto-updater |
-
----
-
-## 9. Build phases
+## 8. Build phases
 
 | Phase | Scope | Done when |
 |---|---|---|
-| **0: Single PC** | User-session agent: UI Automation, COM, PowerShell and screen-capture tools as an MCP server; voice loop (wake word → speech-to-text → LLM → text-to-speech); hub running locally | "Jarvis, open Spotify and play my focus playlist" works by voice |
-| **1: Service + ETW** | Jarvis Service (SYSTEM), ETW consumer, named-pipe bridge, event timeline | "Tell me when my build finishes" works |
-| **2: Two PCs** | Pairing, encrypted mesh, device registry, cross-PC tool routing, clipboard and tab handoff, browser extension | "What's open on my desktop? Send that tab to my laptop." |
-| **3: Level 6, no drivers** | Filtering Platform rules (study mode), Cloud Files "Jarvis Drive" | Files from every PC appear in File Explorer |
-| **4: Hardening** | Permission tiers, confirmations, audit log UI, kill switch, prompt-injection tests, signed installer | Safe to leave running daily |
-| **5: Level 6 drivers (optional)** | Virtual audio (phone as mic), virtual display, virtual input; Microsoft-signed | Phone mic works as the PC's input |
-| **6: Other devices** | Phone app (voice terminal, confirmations, notifications), Mac nodes | Control any PC from your phone |
+| 0 Single PC | Agent: UI Automation, COM, PowerShell and capture tools over MCP; voice loop; local hub | "Open Spotify and play my focus playlist" works by voice |
+| 1 Service + ETW | SYSTEM service, ETW, named-pipe bridge, event timeline | Build-finished alert works |
+| 2 Two PCs | Pairing, mesh, registry, cross-PC routing, clipboard/tab handoff, browser extension | "Send that tab to my laptop" |
+| 3 Level 6, no drivers | Network rules (study mode), Cloud Files "Jarvis Drive" | Every PC's files appear in File Explorer |
+| 4 Hardening | Permission tiers, confirmations, audit log UI, kill switch, prompt-injection tests | Safe to run daily |
+| 5 Drivers (optional) | Virtual audio, display and input, Microsoft-signed | Phone mic works as the PC's input |
+| 6 Other devices | Phone app (voice, confirmations, notifications), Mac nodes | Control any PC from your phone |
 
-### Suggested stack
-- **User-session agent:** C# / .NET 8.
-  - UI Automation, COM and WinRT are first-class in .NET.
-  - Python with `uiautomation` / `pywinauto` / `comtypes` is fine for fast prototyping.
-- **Service:** C# / .NET Worker Service, using `Microsoft.Diagnostics.Tracing.TraceEvent` for ETW.
-- **Drivers (phase 5):** C++ with the Windows Driver Kit.
-- **Hub:** Python (FastAPI) or .NET.
-- **Voice:**
-  - Wake word: openWakeWord
-  - End-of-speech detection: Silero VAD
-  - Speech-to-text: faster-whisper or a streaming cloud service
-  - Text-to-speech: Piper or a cloud voice
-- **Transport:** Tailscale to start; WebSocket + JSON-RPC (MCP) between hub and agents; WebRTC for screen streams.
-- **Storage:** SQLite or Postgres + a vector index.
+**Stack:**
+- Agent and service: C# / .NET 8, using `TraceEvent` for ETW. Python (`uiautomation`, `pywinauto`) is fine for prototyping.
+- Drivers: C++ with the Windows Driver Kit.
+- Hub: Python (FastAPI).
+- Transport: WebSocket + JSON-RPC (MCP), with WebRTC for screen streams.
+- Storage: SQLite/Postgres + vector index.
+
+**Later additions:** smart home (Home Assistant), proactive alerts, Apple Watch/Wear OS approvals, an iPad/web dashboard, an offline local-LLM fallback.
+
+**Cut:** streaming every screen all the time, building our own speech/LLM/VPN, full iPhone control (iOS forbids it), and vision as the main control path.
