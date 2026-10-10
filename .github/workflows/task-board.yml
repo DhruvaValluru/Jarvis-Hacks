@@ -24,13 +24,18 @@ jobs:
           ref: main
           fetch-depth: 0
       - run: git fetch origin '+refs/heads/*:refs/remotes/origin/*'
-      - run: python3 .github/scripts/task_board.py
+      - name: Build board
+        # The board always runs main's copy of the script; until it is on main, there is nothing to do.
+        run: |
+          if [ ! -f .github/scripts/task_board.py ]; then echo "task_board.py not on main yet; skipping"; exit 0; fi
+          python3 .github/scripts/task_board.py
         env:
           GH_TOKEN: ${{ github.token }}
       - name: Commit board if it changed
         run: |
           git config user.name "jarvis-task-board"
           git config user.email "actions@users.noreply.github.com"
+          [ -f docs/STATUS.md ] || exit 0
           git add docs/STATUS.md
           git diff --cached --quiet && exit 0
           git commit -m "Update task board [skip ci]"
