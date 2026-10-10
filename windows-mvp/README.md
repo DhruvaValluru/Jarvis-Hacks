@@ -63,6 +63,36 @@ An optional custom service can replace both through [VOICE_API.md](VOICE_API.md)
 | "What's on my screen?" | Takes a screenshot and describes it (only when asked) |
 | "Open Paint and draw a red square" | Computer use: screenshots plus real mouse and keyboard, because Paint's canvas is invisible to UI Automation |
 
+## Use several PCs
+
+One Jarvis can work on all your PCs: "open Spotify on the laptop", "say dinner's ready on computer 2", "copy build.zip from computer 2 to here and unzip it", "send my clipboard to the laptop".
+
+1. Put the PCs on the same network: the same home Wi-Fi, or [Tailscale](https://tailscale.com/download) on each PC signed in to one account. Tailscale is private and encrypted, and it works when the PCs are in different places.
+2. On computer 2, run `jarvis.bat --serve`. It prints a `JARVIS_TOKEN=...` line. Click **Allow** if Windows Firewall asks.
+3. Paste that line into `windows-mvp\.env` on computer 1 and run `jarvis.bat`. It finds computer 2 by itself and says `Connected to laptop at 100.64.0.2:8765 (25 tools, 3 ms)`.
+
+You don't type any IP addresses. If discovery can't see a PC (some routers block broadcasts), add the `JARVIS_DEVICES=...` line that `--serve` also prints. To control both PCs from either one, set `JARVIS_SERVE=1` on both and use the same token.
+
+| Say | What happens |
+|---|---|
+| "Open Spotify on the laptop" / "tell computer 2 to pause" / "say hi on the laptop" | Instant, no AI call: the fast path runs it on that PC |
+| "Send my clipboard to the laptop" | Instant clipboard handoff |
+| "Copy report.docx from the laptop to my Downloads and open it" | `copy_file` streams the file at full network speed (any size), then opens it here |
+| "Remind me in 10 minutes on the laptop" | The reminder comes back and is spoken on the PC you're talking to |
+| "What's the laptop doing?" | Answered right away: each PC pushes its active window and whether someone's using it |
+| "Build it on computer 2, copy it here and run it" | Claude chains PCs; calls to different PCs in one step run at the same time |
+
+**How it stays fast:**
+- Each PC keeps two open connections to every other PC. One is for commands: Jarvis adds under 1 ms on top of the network time.
+- The other is a live feed the other PC answers the instant something happens: a message, a new active window, or a change to its tools. It also works as a heartbeat, so an offline PC is spotted right away and commands to it fail in under 2 seconds instead of hanging.
+- Files stream as raw bytes on a separate connection, so a big copy never blocks commands.
+- Claude already knows what every PC is showing when you ask, which saves a whole round trip.
+
+**Safety:**
+- Every request, and every discovery reply, has to prove the shared token. A stranger on your network can't find, control or impersonate your PCs.
+- Actions that need approval, including writing files, are confirmed on the PC you're talking to. The serving PC refuses them otherwise.
+- Don't expose port 8765 to the internet. Each PC logs what it ran in its own audit log.
+
 ## Modes
 
 ```
@@ -70,6 +100,7 @@ jarvis.bat            press Enter to talk, or type
 jarvis.bat --wake     hands-free: say "Jarvis, ..." any time
 jarvis.bat --text     typing only
 jarvis.bat --do "open notepad"
+jarvis.bat --serve    let your other PCs use this one (prints the token)
 jarvis.bat --list-tools
 ```
 
@@ -100,7 +131,7 @@ tools: open/close/focus apps, UI Automation (list/click/set/read), Excel/Word CO
        + computer use (fallback): screenshot, click, type, key, scroll, zoom
 ```
 
-Code: `jarvis/router.py` (instant commands), `jarvis/brain.py` (Claude loop), `jarvis/tools/` (one file per area; computer use is `computer.py` + `wininput.py`), `jarvis/voice.py`. Plan: [docs/COMPUTER_USE_PLAN.md](../docs/COMPUTER_USE_PLAN.md).
+Code: `jarvis/router.py` (instant commands), `jarvis/brain.py` (Claude loop), `jarvis/tools/` (one file per area; computer use is `computer.py` + `wininput.py`), `jarvis/remote.py` + `jarvis/discovery.py` (other PCs), `jarvis/voice.py`. Plan: [docs/COMPUTER_USE_PLAN.md](../docs/COMPUTER_USE_PLAN.md).
 
 ## Limits
 
@@ -109,4 +140,4 @@ Code: `jarvis/router.py` (instant commands), `jarvis/brain.py` (Claude loop), `j
 - Excel and Word tools need Office installed and the file already open.
 - Voice uses a simple loudness detector, so a quiet room works best.
 
-Next phases (service, cross-PC mesh, phone client) are in the [main README](../README.md#8-build-phases).
+Next phases (service, pairing by QR code, phone client) are in the [main README](../README.md#8-build-phases).

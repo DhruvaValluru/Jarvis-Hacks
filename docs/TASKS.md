@@ -130,8 +130,11 @@ Legend: `[ ]` open · `[x]` done · `[-]` dropped · `needs:` must be done first
 - [ ] **I6** Hub process: device registry, task log (queued/running/done/failed), routes jobs to the right PC worker. needs: I1.
 - [ ] **I2** Pairing with a QR code and per-device keys; transport over Tailscale or WebSocket with TLS.
 - [ ] **I3** PC worker: wrap today's `windows-mvp` brain as a worker that runs whole jobs locally, sends heartbeats, and releases all keys and mouse buttons and stops if the hub goes silent. needs: I1.
-- [ ] **I4** Handoff: "send this tab/file/clipboard to my laptop".
-- [ ] **I5** "What's my desktop doing?" from another PC.
+- [x] **I4** Handoff: "send this tab/file/clipboard to my laptop". Files (`copy_file`, streamed) and clipboard (`send_clipboard`) done in #9; tabs are I7.
+- [x] **I5** "What's my desktop doing?" from another PC. Done in #9: each PC pushes its active window and in-use state over the live feed (`jarvis/remote.py`).
+- [ ] **I7** Tab handoff: "send this tab to my laptop" (needs the browser extension, or reading the URL bar through UI Automation).
+- [ ] **I8** Whole-job delegation to another PC's brain (`ask_pc`), so long computer-use tasks run there without a network hop per step. Today (#9) the PC you talk to drives the other PC's tools one call at a time. This is the step toward the hub/worker split in I1/I3.
+- [ ] **I9** Test multi-PC on two real Windows PCs over Tailscale and a home LAN: discovery, firewall prompt, `copy_file` speed, reminders coming back. Add the steps to TESTING.md as a manual scenario.
 
 ## J. Phase 3: deeper Windows features (no drivers)
 

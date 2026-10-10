@@ -188,9 +188,40 @@ def list_windows() -> str:
 
 
 def active_window() -> dict | None:
+    """The foreground window, without enumerating every window (cheap enough to poll)."""
     try:
-        return next((w for w in windows() if w["active"]), None)
+        import psutil
+        import win32gui
+        import win32process
+
+        hwnd = win32gui.GetForegroundWindow()
+        title = win32gui.GetWindowText(hwnd) if hwnd else ""
+        if not title:
+            return None
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        try:
+            proc = psutil.Process(pid).name()
+        except Exception:  # noqa: BLE001
+            proc = "?"
+        return {"hwnd": hwnd, "title": title, "process": proc, "pid": pid, "active": True}
     except Exception:  # noqa: BLE001
+        return None
+
+
+def idle_seconds() -> float | None:
+    """Seconds since the last keyboard or mouse input on this PC (None if unknown)."""
+    try:
+        import ctypes
+
+        class LASTINPUTINFO(ctypes.Structure):
+            _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+
+        info = LASTINPUTINFO()
+        info.cbSize = ctypes.sizeof(info)
+        if not ctypes.windll.user32.GetLastInputInfo(ctypes.byref(info)):
+            return None
+        return ((ctypes.windll.kernel32.GetTickCount() - info.dwTime) & 0xFFFFFFFF) / 1000
+    except Exception:  # noqa: BLE001 - not Windows
         return None
 
 
