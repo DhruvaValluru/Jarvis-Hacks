@@ -8,7 +8,7 @@ Events (each also has seq, ts and type): the engine's own messages (accepted, st
 announce, notice, approval, approval_closed, done{id,ok,source,stopped}, ready), plus
   state{state,busy_id,queued}   command{id,source,text}   stop{source}
   crash{code,error,restart_in}  (restart_in is null once it gives up: state crashed)
-  telegram{state,error}         telegram_user{id}
+  telegram{state,error}         telegram_user{id,text}
 """
 
 import json

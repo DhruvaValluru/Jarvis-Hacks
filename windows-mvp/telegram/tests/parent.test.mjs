@@ -76,7 +76,21 @@ test('discovery mode reports the user ID to the app and sends no commands', asyn
   const { bridge, sent } = setup({ ownerId: '' });
   await bridge.receive(update('/start', 1, 777));
   await tick();
-  assert.deepEqual(sent, [{ type: 'telegram_user', id: '777' }]);
+  assert.deepEqual(sent, [{ type: 'telegram_user', id: '777', text: '/start' }]);
+});
+
+test('discovery mode passes what was typed (trimmed, short) so the app can match its link code', async () => {
+  const { bridge, sent } = setup({ ownerId: '' });
+  await bridge.receive(update('  123456 \n', 1, 777));
+  await bridge.receive(update('x'.repeat(100), 2, 778));
+  await bridge.receive(update(undefined, 3, 779)); // a voice note or a sticker: no text
+  await tick();
+  assert.deepEqual(sent, [
+    { type: 'telegram_user', id: '777', text: '123456' },
+    { type: 'telegram_user', id: '778', text: 'x'.repeat(32) },
+    { type: 'telegram_user', id: '779' },
+  ]);
+  assert.equal(bridge.pending.size, 0); // nothing ran
 });
 
 test('bad lines from the app are logged and skipped; closing the input ends the bridge', async () => {

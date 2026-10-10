@@ -8,6 +8,7 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="app.css">
 <script src="app.js" defer></script>
+<script src="onboarding/settings-card.js" defer></script>
 </head>
 <body>
 <header class="top">
@@ -90,6 +91,15 @@
       <label class="field"><span>Owner’s Telegram ID</span>
         <input id="owner" inputmode="numeric" spellcheck="false" placeholder="Send /start to your bot to see it"></label>
       <div class="row"><button type="button" id="owner-save">Save owner</button><span id="owner-msg" class="msg" role="status"></span></div>
+    </section>
+
+    <section id="setup-card" class="card" hidden>
+      <h2>Setup</h2>
+      <p class="muted">Go back to any step of Alfred’s setup.</p>
+      <p id="setup-steps" class="row"></p>
+      <label class="check"><input type="checkbox" id="setup-autostart">
+        <span>Start Alfred when I sign in<small id="setup-autostart-help">Alfred adds itself to Windows’ startup apps. Turn this off to remove it.</small></span></label>
+      <span id="setup-msg" class="msg" role="status"></span>
     </section>
 
     <section class="card">

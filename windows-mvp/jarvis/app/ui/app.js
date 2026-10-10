@@ -698,6 +698,10 @@
   }
 
   wire();
-  refreshStatus().then(connect);
+  // Until the first-run setup (ui/onboarding/) is finished, it comes first.
+  api("GET", "/api/onboarding/state").catch(() => ({})).then((setup) => {
+    if (setup.complete === false) location.replace("/onboarding/");
+    else refreshStatus().then(connect);
+  });
   input.focus();
 })();
