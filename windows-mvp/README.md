@@ -11,6 +11,19 @@ A voice assistant for one Windows 10/11 PC. It opens apps and works inside them 
 
 The first voice command downloads the speech model (about 150 MB). With no API key, the simple commands still work.
 
+## Getting your API key
+
+Jarvis needs an **Anthropic** API key. It starts with `sk-ant-`. Keys from other providers (for example OpenAI's `sk-proj-...`) won't work.
+
+1. Go to [platform.claude.com](https://platform.claude.com) and sign in or create an account.
+2. Add credits under **Billing**. The API is pay-as-you-go and separate from a Claude.ai subscription. Setting a monthly spend limit there is a good idea while testing.
+3. Open **Settings → API keys** ([direct link](https://platform.claude.com/settings/keys)) and click **Create key**. Name it something like `jarvis-home-pc`, then copy it. It's shown only once.
+4. Run `setup.bat` and paste the key when it asks. If you skipped that step, or `.env` already exists, open `windows-mvp\.env` in Notepad and set the line to `ANTHROPIC_API_KEY=sk-ant-...`. No quotes, no spaces.
+5. Run `jarvis.bat --text`. The banner should say `Brain: claude-opus-5-5`. If it says `Brain: none (no API key)`, the key wasn't picked up.
+6. Test it: type `open notepad and write a haiku about Mondays`. If Jarvis says the key was rejected, re-copy it into `.env`.
+
+Keep the key out of git. `.env` is already in `.gitignore`, so never paste the key into code, docs or chat. If it leaks, delete it on the same page and create a new one.
+
 ## Things to try
 
 | Say or type | What happens |

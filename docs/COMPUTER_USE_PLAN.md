@@ -46,6 +46,10 @@ This matches the README's priority order: plugin API → COM → cloud API → U
 - [ ] Multi-monitor support: capture the monitor the target window is on, and handle virtual-desktop offsets.
 - [ ] A global hotkey and an on-screen "Jarvis is driving" overlay with a Stop button (see the user-security plan).
 - [ ] Ask before pressing Enter in chat and email apps. A `key Return` in a message box sends the message, and the risky-click check doesn't cover that yet.
+- [ ] Make the PC side ready to be a **worker** for an outside orchestrator ([ARCHITECTURE.md §3.6](ARCHITECTURE.md#36-orchestrator-outside-the-pc-workers-on-the-pc-crash-resilience)):
+  - [ ] Release every key and mouse button on startup and exit, so a crash never leaves Ctrl or the left button stuck down.
+  - [ ] A watchdog that restarts the worker if it dies.
+  - [ ] A local job API (`run_job` / `cancel_job` / `heartbeat` over WebSocket, MCP-compatible). On a missed heartbeat, stop the job and let go of the controls.
 - [ ] User-side credential fill and other user-end security (planned, not the current focus): [CREDENTIALS_AND_USER_SECURITY.md](CREDENTIALS_AND_USER_SECURITY.md).
 
 ## Known limits (same as UIA, by design)
