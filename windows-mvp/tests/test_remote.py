@@ -687,6 +687,29 @@ def test_discovery_reply_names_the_served_address():
     assert busy and "in use" in busy[0]
 
 
+
+def test_alfreds_own_files_are_never_sent_to_another_pc():
+    server, _ = _setup()
+    tmp = tempfile.TemporaryDirectory()
+    try:
+        secret_env = Path(tmp.name) / ".env"
+        secret_env.write_text("ANTHROPIC_API_KEY=sk-ant-test")
+        audit_log = config.data_dir() / "audit.jsonl"
+        audit_log.parent.mkdir(parents=True, exist_ok=True)
+        audit_log.touch()
+        out_dir = Path(tmp.name) / "out"
+        out_dir.mkdir()
+        for src in (secret_env, audit_log, config.MVP_DIR / "README.md"):
+            ok, out = tools.run("copy_file", {"from_pc": "laptop", "from_path": str(src),
+                                              "to_pc": "here", "to_path": str(out_dir)}, confirm=lambda r: True)
+            assert not ok and "can't be copied" in out, out
+        assert not list(out_dir.iterdir())
+        assert "refused: Alfred's own files" in audit_log.read_text(encoding="utf-8")
+    finally:
+        server.shutdown()
+        _clear()
+        tmp.cleanup()
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

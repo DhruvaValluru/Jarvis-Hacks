@@ -823,6 +823,15 @@ class _Handler(BaseHTTPRequestHandler):
         caller = self._caller()
         args = {"path": str(p), "by": caller}
         try:
+            real = p.resolve()
+        except OSError:
+            real = p
+        if real.name.lower() == ".env" or any(real.is_relative_to(root) for root in _protected()):
+            # Alfred's own folders hold its settings, audit log and (in older setups) API keys.
+            registry.audit("remote_file_read", args, False, "refused: Alfred's own files")
+            self._send(403, {"error": f"Alfred's own files on {here} can't be copied to another PC."})
+            return
+        try:
             f = open(p, "rb") if path.strip() and p.is_file() else None
         except OSError as e:
             registry.audit("remote_file_read", args, False, str(e))
