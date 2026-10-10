@@ -4,7 +4,9 @@ An Iron Man–style "Jarvis": a voice-controlled assistant that sees and acts ac
 
 **Primary target: Windows ↔ Windows.** It gives the deepest system access with the fewest gatekeepers. Macs, iPhones and iPads join later as secondary nodes.
 
-More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (general design) · [docs/APPLE_PLATFORM.md](docs/APPLE_PLATFORM.md) (Apple APIs and limits)
+More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (general design) · [docs/APPLE_PLATFORM.md](docs/APPLE_PLATFORM.md) (Apple APIs and limits) · [docs/COMPUTER_USE_PLAN.md](docs/COMPUTER_USE_PLAN.md) (vision fallback) · [docs/CREDENTIALS_AND_USER_SECURITY.md](docs/CREDENTIALS_AND_USER_SECURITY.md) (passwords and user-side security)
+
+**Contributing (people and agents):** start with the master task list [docs/TASKS.md](docs/TASKS.md) and the live board [docs/STATUS.md](docs/STATUS.md).
 
 **Try it now:** the Phase 0 Windows MVP is in [windows-mvp/](windows-mvp/README.md). Run `setup.bat`, then `jarvis.bat`, and talk to it.
 
@@ -36,6 +38,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (general design) · [d
 ```
 
 - **Device agents** expose their capabilities as **MCP tool servers** with a capability manifest. The hub's LLM is the MCP client.
+- **The brain lives outside the PCs it controls.** The hub's orchestrator sends whole jobs to a worker on each PC, which runs the click-and-type loop locally. If a PC crashes, the hub keeps the task and memory and retries or reports. If the hub drops, workers stop and release the mouse and keyboard. Details: [ARCHITECTURE.md §3.6](docs/ARCHITECTURE.md#36-orchestrator-outside-the-pc-workers-on-the-pc-crash-resilience).
 - **Hub** runs on an always-on PC or a small VM:
   - It tracks devices, live per-device state, and the device you're using (by latest input).
   - It plans multi-step tasks across devices.
@@ -129,7 +132,7 @@ A SYSTEM service does **not** see inside apps. It runs in session 0 with no desk
   - Reading is automatic.
   - Low-risk actions (media, volume, windows) run automatically.
   - Send, delete, buy and post need confirmation (Windows Hello or a phone tap).
-  - Passwords, payments and admin prompts are never automated.
+  - Passwords, payments and admin prompts are never automated. A later, user-approved password fill (Windows Hello, secret never shown to the model) is planned in [docs/CREDENTIALS_AND_USER_SECURITY.md](docs/CREDENTIALS_AND_USER_SECURITY.md).
 - **Voice is not authentication.**
 - Audit log of every action, plus a kill switch that stops all agents.
 - Mutual TLS between devices, keys in Credential Manager / TPM, an ACL-restricted pipe, and code signing on every binary.
@@ -146,7 +149,7 @@ A SYSTEM service does **not** see inside apps. It runs in session 0 with no desk
 |---|---|---|
 | 0 Single PC | Agent: UI Automation, COM, PowerShell and capture tools over MCP; voice loop; local hub | "Open Spotify and play my focus playlist" works by voice |
 | 1 Service + ETW | SYSTEM service, ETW, named-pipe bridge, event timeline | Build-finished alert works |
-| 2 Two PCs | Pairing, mesh, registry, cross-PC routing, clipboard/tab handoff, browser extension | "Send that tab to my laptop" |
+| 2 Two PCs | Hub orchestrator + PC worker job API (heartbeats, retries), pairing, mesh, registry, cross-PC routing, clipboard/tab handoff, browser extension | "Send that tab to my laptop" |
 | 3 Level 6, no drivers | Network rules (study mode), Cloud Files "Jarvis Drive" | Every PC's files appear in File Explorer |
 | 4 Hardening | Permission tiers, confirmations, audit log UI, kill switch, prompt-injection tests | Safe to run daily |
 | 5 Drivers (optional) | Virtual audio, display and input, Microsoft-signed | Phone mic works as the PC's input |

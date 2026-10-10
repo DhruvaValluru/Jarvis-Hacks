@@ -1,0 +1,42 @@
+# Rebuilds docs/STATUS.md (live task board) from docs/TASKS.md, open PRs and branches.
+name: task-board
+on:
+  schedule:
+    - cron: "17 * * * *"
+  pull_request:
+    types: [opened, edited, reopened, closed, synchronize, ready_for_review]
+  push:
+    branches: [main]
+    paths: ["docs/TASKS.md", ".github/scripts/task_board.py"]
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: read
+concurrency:
+  group: task-board
+  cancel-in-progress: false
+jobs:
+  board:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: git fetch origin '+refs/heads/*:refs/remotes/origin/*'
+      - name: Build board
+        # The board always runs main's copy of the script; until it is on main, there is nothing to do.
+        run: |
+          if [ ! -f .github/scripts/task_board.py ]; then echo "task_board.py not on main yet; skipping"; exit 0; fi
+          python3 .github/scripts/task_board.py
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Commit board if it changed
+        run: |
+          git config user.name "jarvis-task-board"
+          git config user.email "actions@users.noreply.github.com"
+          [ -f docs/STATUS.md ] || exit 0
+          git add docs/STATUS.md
+          git diff --cached --quiet && exit 0
+          git commit -m "Update task board [skip ci]"
+          git pull --rebase origin main && git push origin HEAD:main

@@ -9,6 +9,7 @@ import anthropic
 
 from . import remote, tools
 from .config import Config
+from .tools import computer
 from .tools.apps import active_window
 
 SYSTEM = """You are Jarvis, a voice assistant running on the user's Windows PC. You control apps through tools:
@@ -26,6 +27,13 @@ Safety rules:
 - Never type passwords, payment details or one-time codes, and never approve admin (UAC) prompts.
 - Sending, deleting, buying or posting needs the user's clear request; the app will also ask them to confirm."""
 
+COMPUTER_USE = """
+
+Computer use: the screenshot, click, type, key, scroll and zoom tools see the screen and drive the user's real
+mouse and keyboard. Use them only when the tools above can't do the job: games, canvases, custom-drawn apps,
+or when UI Automation finds nothing. Take a screenshot before acting and another to check the result. Prefer
+keyboard shortcuts to long click sequences. The user can take the mouse back at any time."""
+
 
 class Brain:
     def __init__(self, cfg: Config, confirm: Callable[[str], bool], status: Callable[[str], None] = print):
@@ -41,6 +49,17 @@ class Brain:
         self.client = anthropic.Anthropic(api_key=cfg.api_key or None)
         self.messages: list = []
         self.fallbacks = cfg.fallbacks
+        self.system = SYSTEM
+        if cfg.computer_use:
+            self.system += COMPUTER_USE
+
+    def _tool_list(self) -> list[dict]:
+        """Rebuilt per request: other PCs' tools come and go as they connect."""
+        schemas = tools.schemas()
+        if self.cfg.computer_use:
+            # The toolset has its own screenshot member; our custom tool of the same name would clash.
+            schemas = [t for t in schemas if t["name"] != "screenshot"] + [computer.TOOLSET]
+        return schemas
 
     def reset(self) -> None:
         self.messages = []
@@ -49,8 +68,8 @@ class Brain:
         kwargs = dict(
             model=self.cfg.model,
             max_tokens=16000,
-            system=SYSTEM + remote.prompt_note(),
-            tools=tools.schemas(),
+            system=self.system + remote.prompt_note(),
+            tools=self._tool_list(),
             messages=self.messages,
             output_config={"effort": self.cfg.effort},
             cache_control={"type": "ephemeral"},
@@ -78,8 +97,12 @@ class Brain:
         if len(self.messages) > 60:
             self.reset()
         self.messages.append({"role": "user", "content": f"{self._context()}\n{text}"})
+        computer.new_session()
         try:
             return self._loop()
+        except computer.Aborted:
+            self.reset()
+            return "Stopped. You moved the mouse to the corner, so I let go of the controls."
         except anthropic.AuthenticationError:
             self.reset()
             return "My API key was rejected. Check ANTHROPIC_API_KEY in the .env file."
@@ -114,15 +137,27 @@ class Brain:
         """Run one step's tool calls: in order on each PC, and different PCs at the same time."""
         by_pc: dict[str, list] = {}
         for call in calls:
-            by_pc.setdefault(remote.device_of(call.name), []).append(call)
+            local = getattr(call, "toolset_name", None) == computer.TOOLSET_NAME
+            by_pc.setdefault(remote.here if local else remote.device_of(call.name), []).append(call)
+        done: dict[str, dict] = {}
 
         def run_group(group: list) -> None:
+            computer_failed = False
             for call in group:
-                self.status(f"  -> {call.name} {call.input}")
-                ok, out = tools.run(call.name, dict(call.input), self.confirm)
-                done[call.id] = _tool_result(call.id, ok, out)
+                args = _args(call.input)
+                self.status(f"  -> {call.name} {args}")
+                if getattr(call, "toolset_name", None) == computer.TOOLSET_NAME:
+                    # Computer actions run in order; after one fails, the rest of the turn is skipped.
+                    if computer_failed:
+                        done[call.id] = computer.halted_result(call.id)
+                        continue
+                    ok, out = computer.run(call.name, args, self.confirm)
+                    computer_failed = not ok
+                    done[call.id] = _tool_result(call.id, ok, out, toolset=computer.TOOLSET_NAME)
+                else:
+                    ok, out = tools.run(call.name, args, self.confirm)
+                    done[call.id] = _tool_result(call.id, ok, out)
 
-        done: dict[str, dict] = {}
         if len(by_pc) == 1:
             run_group(calls)
         else:
@@ -131,15 +166,23 @@ class Brain:
         return [done[call.id] for call in calls]
 
 
-def _tool_result(tool_use_id: str, ok: bool, out) -> dict:
+def _args(raw) -> dict:
+    """Tool input as a dict. Toolset members arrive as SDK models with unset fields as None."""
+    if hasattr(raw, "model_dump"):
+        return raw.model_dump(exclude_none=True)
+    return dict(raw or {})
+
+
+def _tool_result(tool_use_id: str, ok: bool, out, toolset: str | None = None) -> dict:
     if isinstance(out, tools.Image):
-        content = [
-            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": out.png_b64}},
-            {"type": "text", "text": out.caption},
-        ]
+        content = [{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": out.png_b64}}]
+        if out.caption:
+            content.append({"type": "text", "text": out.caption})
     else:
         content = str(out)
     block = {"type": "tool_result", "tool_use_id": tool_use_id, "content": content}
+    if toolset:
+        block["toolset_name"] = toolset  # the API rejects toolset results without it
     if not ok:
         block["is_error"] = True
     return block

@@ -6,6 +6,7 @@ python -m pytest tests (or python tests/test_remote.py)
 import os
 import socket
 import sys
+import tempfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -173,8 +174,10 @@ def test_offline_fails_fast():
         assert time.perf_counter() - start < 2.5
 
 
-def test_copy_file_streams(tmp_path):
+def test_copy_file_streams():
     server, _ = _setup()
+    tmp = tempfile.TemporaryDirectory()
+    tmp_path = Path(tmp.name)
     try:
         data = os.urandom(3 * 1024 * 1024 + 17)
         src = tmp_path / "build.bin"
@@ -208,6 +211,7 @@ def test_copy_file_streams(tmp_path):
         link.close()
     finally:
         _teardown(server)
+        tmp.cleanup()
 
 
 def test_discovery():
@@ -268,13 +272,7 @@ def test_brain_runs_pcs_in_parallel():
 
 
 if __name__ == "__main__":
-    import tempfile
-
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
-            if "tmp_path" in fn.__code__.co_varnames[: fn.__code__.co_argcount]:
-                with tempfile.TemporaryDirectory() as d:
-                    fn(Path(d))
-            else:
-                fn()
+            fn()
             print("ok", name)

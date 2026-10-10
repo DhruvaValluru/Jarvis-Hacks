@@ -39,6 +39,7 @@ class Config:
     speak: bool
     fallbacks: bool
     max_steps: int
+    computer_use: bool = False
     # Multi-PC (see jarvis/remote.py)
     name: str = "this-pc"
     devices: dict = field(default_factory=dict)  # {"laptop": "100.64.0.2:8765"}
@@ -55,6 +56,7 @@ class Config:
 
 def load() -> Config:
     _load_dotenv(MVP_DIR / ".env")
+    computer_use = os.environ.get("JARVIS_COMPUTER_USE", "1") != "0"
     return Config(
         api_key=os.environ.get("ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_AUTH_TOKEN", ""),
         model=os.environ.get("JARVIS_MODEL", "claude-opus-5-5"),
@@ -62,7 +64,9 @@ def load() -> Config:
         whisper_model=os.environ.get("JARVIS_WHISPER_MODEL", "base.en"),
         speak=os.environ.get("JARVIS_SPEAK", "1") != "0",
         fallbacks=os.environ.get("JARVIS_FALLBACKS", "1") != "0",
-        max_steps=int(os.environ.get("JARVIS_MAX_STEPS", "12")),
+        # Computer use works one screenshot and click at a time, so it needs more steps.
+        max_steps=int(os.environ.get("JARVIS_MAX_STEPS", "40" if computer_use else "12")),
+        computer_use=computer_use,
         name=_pc_name(os.environ.get("JARVIS_NAME") or socket.gethostname()),
         devices=parse_devices(os.environ.get("JARVIS_DEVICES", "")),
         token=os.environ.get("JARVIS_TOKEN", ""),
