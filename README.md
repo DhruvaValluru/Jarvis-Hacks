@@ -4,7 +4,7 @@ An Iron Man–style "Jarvis": a voice-controlled assistant that sees and acts ac
 
 **Primary target: Windows ↔ Windows.** It gives the deepest system access with the fewest gatekeepers. Macs, iPhones and iPads join later as secondary nodes.
 
-More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (general design) · [docs/APPLE_PLATFORM.md](docs/APPLE_PLATFORM.md) (Apple APIs and limits)
+More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (general design) · [docs/APPLE_PLATFORM.md](docs/APPLE_PLATFORM.md) (Apple APIs and limits) · [docs/COMPUTER_USE_PLAN.md](docs/COMPUTER_USE_PLAN.md) (vision fallback) · [docs/CREDENTIALS_AND_USER_SECURITY.md](docs/CREDENTIALS_AND_USER_SECURITY.md) (passwords and user-side security)
 
 **Try it now:** the Phase 0 Windows MVP is in [windows-mvp/](windows-mvp/README.md). Run `setup.bat`, then `jarvis.bat`, and talk to it.
 
@@ -129,7 +129,7 @@ A SYSTEM service does **not** see inside apps. It runs in session 0 with no desk
   - Reading is automatic.
   - Low-risk actions (media, volume, windows) run automatically.
   - Send, delete, buy and post need confirmation (Windows Hello or a phone tap).
-  - Passwords, payments and admin prompts are never automated.
+  - Passwords, payments and admin prompts are never automated. A later, user-approved password fill (Windows Hello, secret never shown to the model) is planned in [docs/CREDENTIALS_AND_USER_SECURITY.md](docs/CREDENTIALS_AND_USER_SECURITY.md).
 - **Voice is not authentication.**
 - Audit log of every action, plus a kill switch that stops all agents.
 - Mutual TLS between devices, keys in Credential Manager / TPM, an ACL-restricted pipe, and code signing on every binary.
