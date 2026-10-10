@@ -730,7 +730,7 @@ def serve(cfg: config.Config, log_fn: Callable[[str], None] = print, background:
 
     threading.Thread(target=watch_status, daemon=True, name="jarvis-status").start()
     addr = f"{my_address()}:{cfg.port}"
-    log(f"Serving {here}'s tools on {addr}. On your other PCs, put this in windows-mvp\\.env:")
+    log(f"Serving {here}'s tools on {addr}. On your other PCs, put this in {config.settings_location()}:")
     log(f"  JARVIS_TOKEN={token}")
     log("They find this PC by themselves on the same network or Tailscale. If one doesn't, also add:")
     log(f"  JARVIS_DEVICES={here}={addr}")
@@ -741,8 +741,13 @@ def serve(cfg: config.Config, log_fn: Callable[[str], None] = print, background:
 
 
 def ensure_token() -> str:
-    """Create JARVIS_TOKEN in .env if it's missing, and return it."""
+    """Create JARVIS_TOKEN if it's missing (in .env from source, the secret store when installed); return it."""
     token = secrets.token_urlsafe(18)
+    if config.frozen():
+        from .settings import Store
+
+        Store().set_secret("JARVIS_TOKEN", token)
+        return token
     env = config.MVP_DIR / ".env"
     text = env.read_text(encoding="utf-8") if env.is_file() else ""
     if re.search(r"^JARVIS_TOKEN=", text, re.M):
@@ -750,7 +755,6 @@ def ensure_token() -> str:
     else:
         text = text.rstrip("\n") + ("\n" if text else "") + f"JARVIS_TOKEN={token}\n"
     env.write_text(text, encoding="utf-8")
-    os.environ["JARVIS_TOKEN"] = token
     return token
 
 

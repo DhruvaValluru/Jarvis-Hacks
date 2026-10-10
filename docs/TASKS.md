@@ -146,6 +146,10 @@ Legend: `[ ]` open · `[x]` done · `[-]` dropped · `needs:` must be done first
 - [ ] **K1** One-click installer (MSIX or Inno Setup) bundling Python and the lock file; auto-start at login.
 - [ ] **K2** Tray icon with status, mute, settings and Stop.
 - [ ] **K3** Code signing plan (certificate, SmartScreen).
+- [x] **K4** Foundation for the Alfred desktop app: saved settings outside the install folder (`jarvis/settings.py`: `%LOCALAPPDATA%\Jarvis\settings.env`, secrets in Windows Credential Manager as `Alfred/<KEY>`), one engine process for every front end (`jarvis/engine.py`, protocol v2; `telegram_worker.py` is now a thin v1 wrapper over it), the in-process API the UI uses (`jarvis/service/`: `AlfredService`, `EventBus`, hard Stop through a Job Object, crash watchdog, `FakeService` for UI work without Windows), and Telegram in parent mode (`ALFRED_BRIDGE_MODE=parent`) so Telegram runs on the app's engine. Tests: `tests/test_settings.py`, `tests/test_service.py`, `telegram/tests/parent.test.mjs`.
+- [ ] **K5** Desktop app window on `jarvis.service.AlfredService` (develop against `jarvis.service.fake.FakeService`): chat, status, approvals, Stop, settings (secrets shown only as `Store.secret_hint`), Telegram on/off and owner pick from `telegram_user` events. needs: K4.
+- [ ] **K6** Package `alfred-cli.exe --engine` (what `service.engine_command()` starts when frozen) and the Telegram bridge with its own `node.exe` (`service.bridge_command()`); first run imports an old `windows-mvp\.env` with `Store.import_legacy_env` and records consent with `consent.record("app")`. needs: K4, K1.
+- [ ] **K7** On a real Windows PC, check that Stop and closing the app kill PowerShell and computer use but never apps Alfred opened for the user (they leave the engine's Job Object via `tools/apps.py:start_detached`), including when the app itself runs inside another job. needs: K4.
 
 ## L. Later phases (see README section 8)
 

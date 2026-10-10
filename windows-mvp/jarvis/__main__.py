@@ -30,17 +30,28 @@ def console_confirm(reason: str) -> bool:
 
 
 class Jarvis:
-    def __init__(self, cfg: config.Config, speaker=None, *, on_reply=None, on_confirm=None):
+    def __init__(self, cfg: config.Config, speaker=None, *, on_reply=None, on_confirm=None, on_status=None):
         self.cfg = cfg
         self.speaker = speaker
         self.on_reply = on_reply
         self.on_confirm = on_confirm
+        self.on_status = on_status  # on_status(kind, text); kind is "thinking", "tool" or "text"
         self.brain = None
         if cfg.has_llm:
             from .brain import Brain
 
-            self.brain = Brain(cfg, confirm=self.confirm, status=lambda s: print(f"  {s}"))
+            self.brain = Brain(cfg, confirm=self.confirm, status=self._brain_status)
         registry.announce = self.reply
+
+    def status(self, kind: str, text: str) -> None:
+        """Progress while a request runs. The console prints it; apps get it through on_status."""
+        if self.on_status:
+            self.on_status(kind, text.strip())
+        else:
+            print(f"  {text}")
+
+    def _brain_status(self, text: str) -> None:
+        self.status("tool" if text.lstrip().startswith("->") else "text", text)
 
     def confirm(self, reason: str) -> bool:
         if self.on_confirm:
@@ -78,9 +89,12 @@ class Jarvis:
                 self.reply(str(out))
                 return
         if not self.brain:
-            self.reply("I only know simple commands without an API key. Add ANTHROPIC_API_KEY to windows-mvp\\.env.")
+            where = "ANTHROPIC_API_KEY to windows-mvp\\.env"
+            if config.frozen():
+                where = "your Anthropic API key in Alfred settings"
+            self.reply(f"I only know simple commands without an API key. Add {where}.")
             return
-        print("  thinking...")
+        self.status("thinking", "thinking...")
         self.reply(self.brain.ask(text))
 
 
@@ -94,7 +108,13 @@ def main() -> None:
     p.add_argument("--list-tools", action="store_true")
     p.add_argument("--doctor", action="store_true", help="check this PC matches the test spec")
     p.add_argument("--terms", action="store_true", help="show the data notice and accept it")
+    p.add_argument("--engine", action="store_true", help=argparse.SUPPRESS)  # the app's engine (engine.py)
     args = p.parse_args()
+
+    if args.engine:
+        from . import engine
+
+        sys.exit(engine.main())
 
     if args.terms:
         if consent.accepted():

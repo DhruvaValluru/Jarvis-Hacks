@@ -11,13 +11,15 @@ set JARVIS_FALLBACKS=1
 set JARVIS_SPEAK=0
 set JARVIS_COMPUTER_USE=1
 set JARVIS_MAX_STEPS=40
+rem Tests never read this PC's saved Alfred settings or Credential Manager secrets.
+set JARVIS_IGNORE_USER_SETTINGS=1
 set FAILED=0
 
 echo === 1/5 Environment check ===
 %PY% -m jarvis --doctor || ( echo Your setup does not match the spec. Run setup.bat, then test again. & exit /b 1 )
 echo.
-echo === 2/5 Unit tests (core, computer use, Telegram worker) ===
-%PY% -m pytest -q tests\test_core.py tests\test_telegram.py || set FAILED=1
+echo === 2/5 Unit tests (core, computer use, Telegram worker, multi-PC, settings, app service) ===
+%PY% -m pytest -q tests\test_core.py tests\test_telegram.py tests\test_remote.py tests\test_settings.py tests\test_service.py || set FAILED=1
 echo.
 echo === 3/5 Windows smoke test (Notepad via UI Automation) ===
 %PY% tests\smoke_windows.py || set FAILED=1

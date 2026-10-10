@@ -5,13 +5,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from jarvis import router, tools  # noqa: E402
 from jarvis.tools import registry  # noqa: E402
-
-# Multi-PC tests live in test_remote.py; importing them here runs them in test.bat (the shared spec).
-from test_remote import *  # noqa: E402,F401,F403
 
 
 def test_router():

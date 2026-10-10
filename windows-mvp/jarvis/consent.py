@@ -49,11 +49,22 @@ def accepted() -> bool:
         return False
 
 
-def record() -> None:
+def record(source: str = "app") -> None:
+    """Store that the current notice was accepted, and where (the app, the console, setup)."""
     _path().write_text(
-        json.dumps({"version": TERMS_VERSION, "accepted_at": time.strftime("%Y-%m-%dT%H:%M:%S")}),
+        json.dumps({"version": TERMS_VERSION, "accepted_at": time.strftime("%Y-%m-%dT%H:%M:%S"), "source": source}),
         encoding="utf-8",
     )
+
+
+def notice_markdown() -> str:
+    """The full notice (PRIVACY.md) for the app to show; the short console NOTICE if it's missing."""
+    for folder in (config.MVP_DIR, config.app_dir()):
+        try:
+            return (folder / "PRIVACY.md").read_text(encoding="utf-8")
+        except OSError:
+            continue
+    return NOTICE.format(version=TERMS_VERSION)
 
 
 def ensure(interactive: bool) -> bool:
@@ -68,7 +79,7 @@ def ensure(interactive: bool) -> bool:
     except EOFError:
         return False
     if answer.strip().lower() == "agree":
-        record()
+        record("console")
         print("Thanks. You can read the full notice again in windows-mvp\\PRIVACY.md.")
         return True
     print("Not accepted. Alfred won't run until you accept (run jarvis.bat --terms).")

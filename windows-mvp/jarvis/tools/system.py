@@ -82,14 +82,21 @@ def open_url(url: str) -> str:
         url = "https://" + url
     if urllib.parse.urlparse(url).scheme not in ("http", "https"):
         raise ToolError("Only http and https links can be opened.")
-    webbrowser.open(url)
+    _browse(url)
     return f"Opened {url}."
 
 
 @tool("web_search", "Search the web in the default browser.", {"query": {"type": "string"}}, required=["query"])
 def web_search(query: str) -> str:
-    webbrowser.open("https://www.google.com/search?q=" + urllib.parse.quote_plus(query))
+    _browse("https://www.google.com/search?q=" + urllib.parse.quote_plus(query))
     return f"Searched for {query}."
+
+
+def _browse(url: str) -> None:
+    from .apps import start_detached
+
+    if not start_detached(url):
+        webbrowser.open(url)
 
 
 @tool("clipboard_get", "Read the text on the clipboard.", risk="read")

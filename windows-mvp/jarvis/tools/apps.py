@@ -104,7 +104,25 @@ def best_match(query: str, names: list[str], cutoff: float = 0.6) -> str | None:
     return lowered[close[0]] if close else None
 
 
+CREATE_BREAKAWAY_FROM_JOB = 0x01000000
+
+
+def start_detached(target: str) -> bool:
+    """In the Alfred app, the engine runs in a Job Object that Stop kills (jarvis/service/process.py).
+    Open what the user asked for through the Windows shell outside that job, so stopping or closing
+    Alfred never closes their apps. Returns False when not in the app (open it the usual way)."""
+    if os.environ.get("JARVIS_ENGINE_JOB") != "1":
+        return False
+    try:
+        subprocess.Popen(["explorer.exe", target], creationflags=CREATE_BREAKAWAY_FROM_JOB)
+        return True
+    except OSError:
+        return False
+
+
 def _launch(target: str) -> None:
+    if start_detached(target):
+        return
     if target.startswith("shell:AppsFolder"):
         subprocess.Popen(["explorer.exe", target])
     else:

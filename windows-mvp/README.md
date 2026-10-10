@@ -104,7 +104,7 @@ jarvis.bat --serve    let your other PCs use this one (prints the token)
 jarvis.bat --list-tools
 ```
 
-Settings live in `windows-mvp\.env` (see `.env.example`): model (default `claude-opus-5-5` at low effort, for speed), speech model size, voice on/off. Server-side refusal fallbacks are on by default (`JARVIS_FALLBACKS=0` turns them off). Computer use is on by default (`JARVIS_COMPUTER_USE=0` turns it off).
+Settings live in `windows-mvp\.env` (see `.env.example`). The Alfred desktop app keeps them outside the install folder instead: plain settings in `%LOCALAPPDATA%\Jarvis\settings.env`, API keys and tokens in Windows Credential Manager (`Alfred/<NAME>`); a variable set in the environment wins over both, and from source `windows-mvp\.env` does too (`jarvis/config.py`). Settings: model (default `claude-opus-5-5` at low effort, for speed), speech model size, voice on/off. Server-side refusal fallbacks are on by default (`JARVIS_FALLBACKS=0` turns them off). Computer use is on by default (`JARVIS_COMPUTER_USE=0` turns it off).
 
 ## Safety
 

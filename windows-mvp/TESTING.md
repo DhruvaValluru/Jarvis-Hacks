@@ -20,7 +20,7 @@ Many people and many agents work on different branches. A test result only means
 1. `setup.bat` (re-run it whenever `requirements.lock.txt` changes; it rebuilds `.venv` to match).
 2. `test.bat` runs five steps and stops at step 1 if your setup is off-spec:
    1. **Environment check**: doctor must say `MATCHES SPEC`.
-   2. **Unit tests**: router, tool schemas, confirmation gates, Claude loop with a fake client, computer-use actions on a fake screen, Telegram worker approvals (no API key needed).
+   2. **Unit tests**: router, tool schemas, confirmation gates, Claude loop with a fake client, computer-use actions on a fake screen, Telegram worker approvals, multi-PC, saved settings, and the app's engine service with its hard Stop (no API key needed). `test.bat` sets `JARVIS_IGNORE_USER_SETTINGS=1`, so tests never read the Alfred settings or Credential Manager secrets saved on your PC.
    3. **Windows smoke test**: opens Notepad, writes and reads text through UI Automation, clipboard, status, screenshot.
    4. **Offline voice test**: Windows' voice speaks fixed phrases into a WAV, Whisper transcribes them, and the router must produce the expected commands. There is no microphone, so it's identical everywhere.
    5. **Telegram bridge tests** (Node). Skipped locally until you run `setup-telegram.bat`; CI always runs them.

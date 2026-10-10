@@ -7,7 +7,7 @@ from typing import Callable
 
 import anthropic
 
-from . import remote, tools
+from . import config, remote, tools
 from .config import Config
 from .tools import computer
 from .tools.apps import active_window
@@ -105,6 +105,8 @@ class Brain:
             return "Stopped. You moved the mouse to the corner, so I let go of the controls."
         except anthropic.AuthenticationError:
             self.reset()
+            if config.frozen():
+                return "My API key was rejected. Check the Anthropic API key in Alfred settings."
             return "My API key was rejected. Check ANTHROPIC_API_KEY in the .env file."
         except anthropic.APIConnectionError:
             self.reset()
