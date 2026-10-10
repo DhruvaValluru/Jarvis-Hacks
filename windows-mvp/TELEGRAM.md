@@ -1,7 +1,7 @@
 # Control the Windows MVP from Telegram
 
 Send a private Telegram message to your Jarvis bot. The Windows PC runs the
-command and sends a text reply, plus an MP3 when ElevenLabs is configured.
+command and sends a text reply, plus an MP3 when OpenAI is configured.
 Commands run one at a time in the logged-in Windows user session.
 
 ## Setup on your Windows PC
@@ -26,13 +26,18 @@ channels, other users, and bot messages are ignored. The bridge does not expose
 an HTTP port. Keep the Windows PC awake and logged in, with the bridge running.
 The first owner-authorized command must be sent after the worker is online.
 
-## ElevenLabs audio
+## OpenAI audio
 
-Add `ELEVENLABS_API_KEY` to the same `.env` file and restart. Optionally set
-`ELEVENLABS_VOICE_ID`; the default is George (`JBFqnCBsd6RMkjVDRZzb`). The default
-model is `eleven_flash_v2_5`. Replies arrive as text plus an MP3 audio message.
-Speech generation is limited to the first 1,500 characters of each reply; the
-complete text is still sent. ElevenLabs generation uses your account's credits.
+Add `OPENAI_API_KEY` to the same `.env` file and restart. Optionally set
+`OPENAI_TTS_VOICE` (default `cedar`) and `OPENAI_TTS_MODEL` (default
+`gpt-4o-mini-tts`). Replies arrive as text plus an MP3 audio message using an
+AI-generated voice. Speech generation is limited to the first 1,500 characters
+of each reply; the complete text is still sent. OpenAI API billing applies.
+Remove any old `ELEVENLABS_*` settings; the bridge no longer reads them.
+
+The request uses OpenAI's [speech endpoint](https://developers.openai.com/api/docs/guides/text-to-speech).
+This handles outgoing spoken replies. The existing Claude brain and local
+Windows microphone mode keep their current providers.
 
 Send `/audio off` for text-only replies or `/audio on` to enable audio for this
 run. If synthesis or audio upload fails, the text reply remains available.
@@ -60,7 +65,7 @@ Telegram private chat
   -> Photon's @photon-ai/telegram-ts SDK (long polling)
   -> local Python jarvis.telegram_worker (JSON lines over stdin/stdout)
   -> existing Jarvis.handle -> router/Claude -> Windows tools
-  -> Jarvis.reply -> Telegram text + optional ElevenLabs MP3
+  -> Jarvis.reply -> Telegram text + optional OpenAI MP3
 ```
 
 This integration uses the **published Photon Telegram SDK**, pinned to
@@ -79,8 +84,8 @@ integration should not be represented as fulfilling that requirement.
   `JARVIS_PYTHON` to a Python executable with the MVP packages installed.
 - Bot already has a webhook / another instance: use a dedicated new bot and
   run one bridge. This launcher does not delete another integration's webhook.
-- No audio: check the ElevenLabs key, available credits, voice access, and
-  `/audio on`. Text delivery does not require ElevenLabs.
+- No audio: check the OpenAI key, API billing, voice/model access, and
+  `/audio on`. Text delivery does not require OpenAI.
 - Elevated apps, a locked desktop, and Office requirements have the same limits
   as the original Windows MVP.
 
@@ -97,4 +102,4 @@ npm test
 The Telegram tests use the real published SDK with mocked network responses,
 including multipart MP3 upload. They do not spend credits or send real messages.
 The Windows workflow also runs the original desktop smoke test. A live
-Telegram/ElevenLabs demo requires your locally configured credentials.
+Telegram/OpenAI demo requires your locally configured credentials.

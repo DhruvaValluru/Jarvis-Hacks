@@ -11,10 +11,10 @@ A voice assistant for one Windows 10/11 PC. It opens apps and works inside them 
 
 The first voice command downloads the speech model (about 150 MB). With no API key, the simple commands still work.
 
-## Telegram + ElevenLabs
+## Telegram + OpenAI
 
 Control this PC from a private Telegram chat using Photon's Telegram SDK.
-Replies are text plus optional ElevenLabs audio. Run `setup-telegram.bat`,
+Replies are text plus optional OpenAI audio. Run `setup-telegram.bat`,
 configure your bot token and owner ID, then start `jarvis-telegram.bat`.
 See [TELEGRAM.md](TELEGRAM.md) for bot creation, pairing, approvals and audio setup.
 

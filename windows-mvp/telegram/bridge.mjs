@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 export const HELP = 'Jarvis controls your Windows PC from this private chat.\n'
   + 'Try: open notepad, volume 30, what is running, or timer for 10 seconds.\n'
   + '/reset starts a fresh conversation. /audio on or /audio off toggles spoken replies.\n'
+  + 'Spoken replies use an AI-generated voice.\n'
   + 'Actions needing permission ask for /approve CODE or /deny CODE.';
 
 export class Bridge {
@@ -39,7 +40,9 @@ export class Bridge {
     if (text === '/start' || text === '/help') return this.sendText(HELP);
     if (text === '/audio on' || text === '/audio off') {
       this.audio = text.endsWith('on') && Boolean(this.synthesize);
-      return this.sendText(this.audio ? 'Audio replies on.' : 'Audio replies off. Configure ElevenLabs to enable them.');
+      return this.sendText(this.audio ? 'Audio replies on (AI-generated voice).'
+        : text.endsWith('off') ? 'Audio replies off.'
+        : 'Set OPENAI_API_KEY on the PC and restart to enable audio replies.');
     }
     const approval = /^\/(approve|deny) ([a-f0-9]{8})$/i.exec(text);
     if (approval) {

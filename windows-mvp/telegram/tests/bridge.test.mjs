@@ -48,7 +48,7 @@ test('commands deduplicate, reject stale events, and keep approval replies flowi
   assert.equal(bridge.pending.size, 0);
 });
 
-test('reply text survives ElevenLabs failures and audio can be disabled', async () => {
+test('reply text survives OpenAI speech failures and audio can be disabled', async () => {
   const { bridge, texts, audio } = setup({ synthesize: async () => { throw new Error('offline'); } });
   await bridge.receiveWorker({ type: 'reply', text: 'Opened Notepad.' });
   assert.deepEqual(texts, ['Opened Notepad.']);
@@ -80,16 +80,19 @@ test('Photons published SDK sends valid text and multipart MP3 requests', async 
   assert.deepEqual(new Uint8Array(await form.get('speech').arrayBuffer()), new Uint8Array([73, 68, 51]));
 });
 
-test('ElevenLabs returns MP3 bytes and limits the spoken length', async () => {
+test('OpenAI speech returns MP3 bytes and limits the spoken length', async () => {
   let options;
-  const speak = createSpeech({ ELEVENLABS_API_KEY: 'fake-key' }, async (url, opts) => {
+  const speak = createSpeech({ OPENAI_API_KEY: 'fake-key' }, async (url, opts) => {
     options = opts;
-    assert.match(url, /output_format=mp3_44100_128/);
+    assert.equal(url, 'https://api.openai.com/v1/audio/speech');
     return new Response(new Uint8Array([73, 68, 51]), { headers: { 'content-type': 'audio/mpeg' } });
   });
   assert.deepEqual(await speak('x'.repeat(2000)), new Uint8Array([73, 68, 51]));
-  assert.equal(JSON.parse(options.body).text.length, 1500);
-  assert.equal(options.headers['xi-api-key'], 'fake-key');
+  assert.equal(JSON.parse(options.body).input.length, 1500);
+  assert.equal(options.headers.Authorization, 'Bearer fake-key');
+  assert.equal(options.method, 'POST');
+  assert.deepEqual(JSON.parse(options.body), { input: 'x'.repeat(1500),
+    model: 'gpt-4o-mini-tts', voice: 'cedar', response_format: 'mp3' });
   assert.equal(createSpeech({}), undefined);
 });
 
@@ -127,4 +130,23 @@ test('queue stays bounded without blocking denial or reset', async () => {
   await bridge.receiveWorker({ type: 'done', id: commands[0].id });
   await bridge.receive(update('/reset', 13));
   assert.equal(commands[11].text, 'reset');
+});
+
+
+test('OpenAI speech honors configuration and rejects HTTP errors without leaking secrets', async () => {
+  const speak = createSpeech({ OPENAI_API_KEY: 'secret-key', OPENAI_TTS_MODEL: 'tts-1',
+    OPENAI_TTS_VOICE: 'onyx' }, async (_url, opts) => {
+    assert.deepEqual(JSON.parse(opts.body), { input: 'Hello', model: 'tts-1',
+      voice: 'onyx', response_format: 'mp3' });
+    return Response.json({ error: { message: 'secret-key' } }, { status: 401 });
+  });
+  await assert.rejects(speak('Hello'), { message: 'OpenAI speech returned HTTP 401' });
+});
+
+test('audio settings explain a missing key and can turn off without configuring a provider', async () => {
+  const { bridge, texts } = setup();
+  await bridge.receive(update('/audio on'));
+  assert.match(texts[0], /OPENAI_API_KEY/);
+  await bridge.receive(update('/audio off', 2));
+  assert.equal(texts[1], 'Audio replies off.');
 });
