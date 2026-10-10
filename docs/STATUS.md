@@ -1,6 +1,6 @@
 # Live task board
 
-_Auto-generated 2026-10-10 20:33 UTC from [TASKS.md](TASKS.md), open PRs and branches. Do not edit; changes are overwritten._
+_Auto-generated 2026-10-10 20:35 UTC from [TASKS.md](TASKS.md), open PRs and branches. Do not edit; changes are overwritten._
 
 **Progress:** 18 of 81 tasks done.
 
@@ -8,7 +8,9 @@ _Auto-generated 2026-10-10 20:33 UTC from [TASKS.md](TASKS.md), open PRs and bra
 
 | Task | Title | Claimed by |
 |---|---|---|
-| **0.1** | Merge PR #5 (shared test spec) into `main`. | PR #8 (DhruvaValluru, `claude/funny-tesla-rxt8yr`, draft) |
+| **C10** | Remote stop for computer use: the corner kill switch only works for someone at the PC. When a task comes from Telegram, `/stop` must abort computer use mid-turn. | PR #8 (DhruvaValluru, `claude/funny-tesla-rxt8yr`, draft) |
+| **E7** | Remote computer-use guardrails: decide whether computer use is allowed from Telegram by default (screenshots of the PC leave the house, and nobody is at the PC to stop the mouse). Add `JARVIS_REMOTE_COMPUTER_USE` if needed. | PR #8 (DhruvaValluru, `claude/funny-tesla-rxt8yr`, draft) |
+| **F8** | Third-party data map: list what goes to Anthropic (prompts, screenshots), OpenAI (voice notes, reply audio) and Photon (Telegram messages), and show it to users in the README. | PR #8 (DhruvaValluru, `claude/funny-tesla-rxt8yr`, draft) |
 | **I4** | Handoff: "send this tab/file/clipboard to my laptop". | PR #9 (DhruvaValluru, `communications`, draft) |
 | **I5** | "What's my desktop doing?" from another PC. | PR #9 (DhruvaValluru, `communications`, draft) |
 
@@ -19,6 +21,7 @@ First 3 per area. Take the lowest number in your area.
 
 **0. Integration (do these first; they unblock everyone)**
 
+- **0.1** Merge PR #5 (shared test spec) into `main`.
 - **0.6** Delete the stale branches `mvp` and `claude/sharp-bohr-sglils` (already merged). Ask the repo owner first.
 
 **A. Core brain (Claude loop, routing, memory)**
