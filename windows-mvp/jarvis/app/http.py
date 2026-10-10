@@ -60,9 +60,9 @@ class Response:
         return cls(status, text.encode(), {"Content-Type": content_type})
 
     @classmethod
-    def sse(cls, events: Iterable[dict]) -> "Response":
-        """Server-sent events. Each dict may carry "id" and "event"; the rest is sent as JSON data.
-        Yield {} to send a keep-alive comment."""
+    def sse(cls, events: Iterable[dict], id_key: str = "id") -> "Response":
+        """Server-sent events. Each dict may carry "id" (or id_key) and "event"; the rest is sent as
+        JSON data. Yield {} to send a keep-alive comment."""
 
         def encode():
             for ev in events:
@@ -71,8 +71,8 @@ class Response:
                     continue
                 ev = dict(ev)
                 head = ""
-                if "id" in ev:
-                    head += f"id: {ev['id']}\n"
+                if id_key in ev:
+                    head += f"id: {ev[id_key]}\n"
                 if "event" in ev:
                     head += f"event: {ev.pop('event')}\n"
                 yield (head + f"data: {json.dumps(ev, ensure_ascii=False)}\n\n").encode()

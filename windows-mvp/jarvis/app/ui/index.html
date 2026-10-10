@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Alfred</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><img src="icon.svg" alt="" width="28" height="28"><span>Alfred</span></div>
+  <nav class="tabs" aria-label="Pages">
+    <button type="button" class="tab" data-view="home" aria-current="page">Home</button>
+    <button type="button" class="tab" data-view="activity">Activity</button>
+    <button type="button" class="tab" data-view="settings">Settings</button>
+  </nav>
+  <div class="chips">
+    <span id="pill" class="pill" data-state="starting" role="status" aria-live="polite">Connecting</span>
+    <button type="button" id="telegram" class="chip" data-state="off" title="Telegram">Telegram: off</button>
+  </div>
+  <button type="button" id="stop" class="stop" title="Stop everything Alfred is doing now">STOP</button>
+</header>
+
+<div id="banners" class="banners" aria-live="polite"></div>
+
+<main>
+  <section id="view-home" class="view home" aria-label="Conversation">
+    <ol id="log" class="log"></ol>
+    <div id="empty" class="empty">
+      <p class="big">What should Alfred do?</p>
+      <p>Try “open Notepad and write a shopping list” or “what’s on my screen?”. Alfred asks before it sends,
+        deletes, buys or posts anything. Press <kbd>STOP</kbd> any time.</p>
+    </div>
+    <form id="composer" class="composer" autocomplete="off">
+      <textarea id="input" rows="1" placeholder="Tell Alfred what to do…" aria-label="Command for Alfred"></textarea>
+      <button type="submit" id="send" class="primary">Send</button>
+    </form>
+    <p class="hint"><kbd>Enter</kbd> sends · <kbd>Shift</kbd>+<kbd>Enter</kbd> new line · <kbd>Esc</kbd> jumps to Stop<span id="hotkey-hint"></span>
+      · <button type="button" id="reset" class="link">Start a fresh conversation</button></p>
+  </section>
+
+  <section id="view-activity" class="view page" aria-label="Activity" hidden>
+    <div class="toolbar">
+      <h1>Activity</h1>
+      <input id="audit-filter" type="search" placeholder="Filter" aria-label="Filter activity">
+      <button type="button" id="audit-refresh">Refresh</button>
+    </div>
+    <p class="muted">Everything Alfred did on this PC, newest first. It is saved in <code id="audit-file"></code>.</p>
+    <table class="audit">
+      <thead><tr><th>When</th><th>Action</th><th>Result</th></tr></thead>
+      <tbody id="audit-rows"></tbody>
+    </table>
+    <p id="audit-empty" class="muted" hidden>Nothing yet.</p>
+  </section>
+
+  <section id="view-settings" class="view page" aria-label="Settings" hidden>
+    <h1>Settings</h1>
+    <form id="settings-form" class="card" autocomplete="off">
+      <h2>How Alfred works</h2>
+      <label class="field"><span>Model</span>
+        <input name="JARVIS_MODEL" spellcheck="false" placeholder="claude-opus-5-5"></label>
+      <label class="field"><span>Effort</span>
+        <select name="JARVIS_EFFORT">
+          <option value="low">Low: fastest replies</option>
+          <option value="medium">Medium</option>
+          <option value="high">High: most careful</option>
+        </select></label>
+      <label class="check"><input type="checkbox" name="JARVIS_COMPUTER_USE">
+        <span>Computer use<small>Alfred may take screenshots and use your mouse and keyboard when other tools can’t do the job.</small></span></label>
+      <label class="check"><input type="checkbox" name="JARVIS_SPEAK">
+        <span>Spoken replies<small>Alfred reads its replies aloud on this PC.</small></span></label>
+      <label class="field"><span>This PC’s name</span>
+        <input name="JARVIS_NAME" spellcheck="false" maxlength="30"></label>
+      <div class="row"><button type="submit" class="primary">Save</button><span id="settings-msg" class="msg" role="status"></span></div>
+    </form>
+
+    <section class="card">
+      <h2>API keys</h2>
+      <p id="secrets-note" class="muted"></p>
+      <div id="secrets"></div>
+    </section>
+
+    <section class="card">
+      <h2>Telegram</h2>
+      <p class="muted">Text Alfred from your phone. Needs the Telegram bot token and the Spectrum secret above.</p>
+      <div class="row"><span id="telegram-state" class="msg"></span><button type="button" id="telegram-toggle">Turn on</button></div>
+      <label class="field"><span>Owner’s Telegram ID</span>
+        <input id="owner" inputmode="numeric" spellcheck="false" placeholder="Send /start to your bot to see it"></label>
+      <div class="row"><button type="button" id="owner-save">Save owner</button><span id="owner-msg" class="msg" role="status"></span></div>
+    </section>
+
+    <section class="card">
+      <h2>About</h2>
+      <p class="muted">Settings are saved in <code id="settings-file"></code>.
+        <span id="version"></span></p>
+      <div class="row">
+        <button type="button" id="restart">Restart Alfred’s engine</button>
+        <button type="button" id="quit" class="danger" hidden>Quit Alfred</button>
+      </div>
+    </section>
+  </section>
+</main>
+
+<div id="consent" class="overlay" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="consent-title">
+    <h1 id="consent-title">Before Alfred starts</h1>
+    <p class="muted">Please read what Alfred does on this PC and where your data goes.</p>
+    <div id="notice" class="notice" tabindex="0"></div>
+    <div class="actions"><span id="consent-msg" class="msg" role="status"></span><button type="button" id="agree" class="primary">I agree</button></div>
+  </div>
+</div>
+
+<div id="approval" class="overlay" hidden>
+  <div class="sheet approval" role="alertdialog" aria-modal="true" aria-labelledby="approval-title" aria-describedby="approval-reason">
+    <h1 id="approval-title">Alfred wants to</h1>
+    <p id="approval-reason" class="reason"></p>
+    <p id="approval-from" class="from"></p>
+    <div class="countdown" aria-hidden="true"><div id="approval-bar" class="bar"></div></div>
+    <p id="approval-time" class="muted"></p>
+    <div class="actions">
+      <button type="button" id="deny">Deny</button>
+      <button type="button" id="allow" class="primary">Allow</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

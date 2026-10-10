@@ -15,6 +15,8 @@ A voice assistant for one Windows 10/11 PC. It opens apps and works inside them 
 
 The first voice command downloads the speech model (about 150 MB). With no API key, the simple commands still work.
 
+**Desktop app (preview):** `.venv\Scripts\python -m jarvis.app` opens Alfred in a window with a tray icon, a big STOP button, approvals, settings and an activity log. See [DESKTOP.md](DESKTOP.md).
+
 ## Getting your API key
 
 Jarvis needs an **Anthropic** API key. It starts with `sk-ant-`. Keys from other providers (for example OpenAI's `sk-proj-...`) won't work.

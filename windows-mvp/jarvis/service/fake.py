@@ -11,6 +11,7 @@ import threading
 import time
 import uuid
 
+from .. import consent as terms
 from ..engine import clean_source
 from .core import CommandResult, NotReady, QueueFull, Status
 from .events import EventBus
@@ -21,7 +22,7 @@ class FakeService:
         self.store = store
         self.bus = bus or EventBus()
         self.delay = delay  # seconds each scripted step takes
-        self.consent = consent
+        self.consent = consent  # None: like the real service, ask consent.accepted()
         self._lock = threading.RLock()
         self._state = "off"
         self._telegram = "off"
@@ -38,7 +39,7 @@ class FakeService:
         with self._lock:
             if self._state not in ("off", "needs_consent", "crashed"):
                 return self.status()
-            if not self.consent:
+            if not self._consented():
                 self._set("needs_consent")
                 return self.status()
             self._set("starting")
@@ -57,8 +58,14 @@ class FakeService:
         with self._lock:
             self._gen += 1
             self._fail_all(stopped=False)
+            if not self._consented():
+                self._set("needs_consent")
+                return
             self._set("starting")
         self._later(self.delay, self._ready, False)
+
+    def _consented(self) -> bool:
+        return terms.accepted() if self.consent is None else bool(self.consent)
 
     def stop(self, source: str = "desktop") -> bool:
         with self._lock:
