@@ -4,7 +4,7 @@ A voice assistant for one Windows 10/11 PC. It opens apps and works inside them 
 
 ## Start in 2 minutes
 
-1. Download this repo (green **Code** button, then **Download ZIP**) and unzip it, or `git clone` it.
+1. Download this repo (green **Code** button, then **Download ZIP**) and unzip it, or `git clone` it. Until computer use is merged, it lives on the `eshaan-work` branch: `git clone -b eshaan-work https://github.com/DhruvaValluru/Jarvis-Hacks.git`. In PowerShell, go to the folder with `cd Jarvis-Hacks\windows-mvp`. Can't find it? Run `Get-ChildItem $HOME -Recurse -Directory -Filter windows-mvp -ErrorAction SilentlyContinue`.
 2. Double-click **`windows-mvp\setup.bat`**. It finds or installs Python 3.12, installs the packages and asks for your [Anthropic API key](https://platform.claude.com/settings/keys).
 3. Double-click **`windows-mvp\jarvis.bat`**.
 4. Press **Enter** and talk, or type a command.
@@ -23,6 +23,19 @@ Jarvis needs an **Anthropic** API key. It starts with `sk-ant-`. Keys from other
 6. Test it: type `open notepad and write a haiku about Mondays`. If Jarvis says the key was rejected, re-copy it into `.env`.
 
 Keep the key out of git. `.env` is already in `.gitignore`, so never paste the key into code, docs or chat. If it leaks, delete it on the same page and create a new one.
+
+## First-run checklist
+
+Run `.\jarvis.bat --text`, then try these in order:
+
+| # | Type | Checks |
+|---|---|---|
+| 1 | `what time is it` | Instant command (no AI) |
+| 2 | `open notepad and write a haiku about Mondays` | Claude + UI Automation, no mouse movement |
+| 3 | `what's in my notepad?` | Reading app text |
+| 4 | `open Paint and draw a red square` | **Computer use**: the mouse moves by itself. Hands off; move the mouse to the top-left corner to stop it |
+
+If something goes wrong, copy the terminal output (the `-> tool {...}` lines show each step) and the last actions from the log: `Get-Content $env:LOCALAPPDATA\Jarvis\audit.jsonl -Tail 20`.
 
 ## Things to try
 
