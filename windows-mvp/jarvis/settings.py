@@ -87,14 +87,14 @@ class WinCredBackend:
     def set(self, key: str, value: str) -> None:
         import win32cred
 
-        blob = value.encode("utf-16-le")
-        if len(blob) > CRED_MAX_BYTES:
+        if len(value.encode("utf-16-le")) > CRED_MAX_BYTES:
             raise ValueError(f"{key} is too long to store.")
         win32cred.CredWrite({
             "Type": win32cred.CRED_TYPE_GENERIC,
             "TargetName": CRED_PREFIX + key,
             "UserName": key,
-            "CredentialBlob": blob,
+            # pywin32 takes the blob as text and stores it as UTF-16, which get() decodes.
+            "CredentialBlob": value,
             "Persist": win32cred.CRED_PERSIST_LOCAL_MACHINE,
             "Comment": "Alfred setting",
         }, 0)
