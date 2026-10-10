@@ -2,6 +2,7 @@
 
 import http.client
 import json
+import socket
 import sys
 from pathlib import Path
 
@@ -54,5 +55,51 @@ def test_server_sent_events():
         status, ctype, data = _call(port, "GET", "/api/events")
         assert status == 200 and ctype == "text/event-stream"
         assert data.decode() == 'id: 1\nevent: reply\ndata: {"id": 1, "text": "hi"}\n\n: keep-alive\n\n'
+    finally:
+        server.shutdown()
+
+
+def _send_raw(port, data: bytes) -> bytes:
+    """Send bytes as they are and read until the server closes. Times out if it waits for a body."""
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
+        sock.sendall(data)
+        out = b""
+        while chunk := sock.recv(65536):
+            out += chunk
+    return out
+
+
+def test_bad_lengths_are_refused_without_reading_the_body():
+    seen = []
+    router = Router()
+    router.add("PUT", "/api/x", lambda req: seen.append(req.body) or Response.json({"ok": True}), auth=False)
+    server, port = _server(router)
+    try:
+        for header, status in ((b"Content-Length: -1", 400), (b"Content-Length: abc", 400), (b"Content-Length: \xb2", 400),
+                               (b"Content-Length: 1\r\nContent-Length: 1", 400), (b"Content-Length: 2000000", 413),
+                               (b"Transfer-Encoding: chunked", 411)):
+            reply = _send_raw(port, b"PUT /api/x HTTP/1.1\r\nHost: x\r\n" + header + b"\r\n\r\n")
+            assert reply.startswith(b"HTTP/1.1 %d " % status) and b"Connection: close" in reply, header
+        assert seen == []
+        assert _call(port, "PUT", "/api/x", {"a": 1})[0] == 200 and seen == [b'{"a": 1}']
+    finally:
+        server.shutdown()
+
+
+def test_check_runs_before_every_route_and_static_file():
+    router = Router()
+    router.add("GET", "/api/health", lambda req: Response.json({"ok": True}), auth=False)
+    router.add("GET", "/api/private", lambda req: Response.json({"ok": True}))
+
+    def check(req):
+        if req.header("Host") != "good":
+            raise HTTPError(403, "Wrong host.")
+
+    server, port = _server(router, check=check, authorize=lambda req: True, fallback=lambda req: Response.text("static"))
+    try:
+        for path in ("/api/health", "/api/private", "/index.html"):
+            assert _call(port, "GET", path, headers={"Host": "evil"})[0] == 403, path
+            assert _call(port, "GET", path, headers={"Host": "good"})[0] == 200, path
+        assert _call(port, "POST", "/nope", {}, {"Host": "evil"})[0] == 403
     finally:
         server.shutdown()

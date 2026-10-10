@@ -6,9 +6,9 @@ a global Stop hotkey, and one running copy per Windows user.
   python -m jarvis.app --no-window   use the default browser instead of Alfred's own window
   python -m jarvis.app --port 8770   a fixed port (default: a random free one)
 
-The window needs pywebview and the tray icon pystray (with Pillow). Without pywebview Alfred opens
-in the browser; without pystray there is no tray icon, and closing the window quits, so Alfred
-never runs where you can't see it.
+The window needs pywebview and the tray icon pystray (with Pillow). Without pywebview, or without
+the WebView2 runtime it needs, Alfred opens in the browser; without pystray there is no tray icon,
+and closing the window quits, so Alfred never runs where you can't see it.
 """
 
 import argparse
@@ -27,6 +27,7 @@ from .server import App
 HOTKEY = "Ctrl+Alt+Backspace"
 MOD_ALT, MOD_CONTROL, MOD_NOREPEAT = 0x1, 0x2, 0x4000
 VK_BACK, WM_HOTKEY, WM_QUIT = 0x08, 0x0312, 0x0012
+SM_SHUTTINGDOWN = 0x2000
 
 
 class InstanceLock:
@@ -119,7 +120,8 @@ class StopHotkey:
         self.on_press = on_press
         self.ok = False
         self.error = ""
-        self._thread_id = 0
+        self._thread_id = 0  # only while its message loop runs: Windows reuses thread ids
+        self._lock = threading.Lock()
         self._ready = threading.Event()
 
     def start(self, timeout: float = 2) -> "StopHotkey":
@@ -134,10 +136,11 @@ class StopHotkey:
             from ctypes import wintypes
 
             user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
-            self._thread_id = kernel32.GetCurrentThreadId()
             if not user32.RegisterHotKey(None, 1, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_BACK):
                 self.error = f"{HOTKEY} is taken by another app, so the Stop hotkey is off. Use the Stop button."
                 return
+            with self._lock:  # RegisterHotKey gave this thread a message queue
+                self._thread_id = kernel32.GetCurrentThreadId()
             self.ok = True
         except Exception as e:  # noqa: BLE001 - the app works without it; say so in the window
             self.error = f"The Stop hotkey couldn't be set up ({type(e).__name__}). Use the Stop button."
@@ -153,14 +156,17 @@ class StopHotkey:
                     except Exception:  # noqa: BLE001 - keep listening
                         pass
         finally:
+            with self._lock:
+                self._thread_id = 0
             user32.UnregisterHotKey(None, 1)
             self.ok = False
 
     def stop(self) -> None:
-        if self._thread_id:
-            import ctypes
+        with self._lock:
+            if self._thread_id:
+                import ctypes
 
-            ctypes.windll.user32.PostThreadMessageW(self._thread_id, WM_QUIT, 0, 0)
+                ctypes.windll.user32.PostThreadMessageW(self._thread_id, WM_QUIT, 0, 0)
 
 
 class Shell:
@@ -170,9 +176,11 @@ class Shell:
         self.app, self.service = app, service
         self.use_window = window
         self.window = None
+        self.window_failed = not window  # True once Alfred uses the browser instead
         self.tray = None
         self.hotkey = None
         self.quitting = threading.Event()
+        self._minimized = None  # None: pywebview doesn't say, so show() always restores
         self._told_tray = False
         self._unsubscribe = None
         app.on_show, app.on_quit = self.show, self.quit
@@ -192,11 +200,14 @@ class Shell:
     def show(self) -> None:
         if self.quitting.is_set():
             return
-        window = self.window
-        if window is not None:
+        if not self.window_failed:
+            window = self.window
+            if window is None:
+                return  # Alfred's window is still opening, and shows itself (or the browser opens instead)
             try:
                 window.show()
-                window.restore()
+                if self._minimized is not False:
+                    window.restore()  # only when needed: it also un-maximizes
                 return
             except Exception:  # noqa: BLE001 - fall back to the browser
                 pass
@@ -230,21 +241,44 @@ class Shell:
         except ImportError:
             print("pywebview isn't installed, so Alfred opens in your browser. "
                   "For its own window: pip install pywebview")
+            self.window_failed = True
             return False
         try:
+            if _missing_webview2():
+                self.window_failed = True
+                self.notify("Alfred's own window needs the Microsoft Edge WebView2 Runtime, which this PC doesn't "
+                            "have, so Alfred opens in your browser. Install the runtime from Microsoft to get the window.")
+                return False
             self.window = webview.create_window("Alfred", self.app.login_url(), width=1040, height=760,
                                                 min_size=(440, 560), background_color="#11141a")
-            self.window.events.closing += self._on_closing
+            events = self.window.events
+            events.closing += self._on_closing
+            try:
+                events.minimized += self._on_minimized
+                events.restored += self._on_restored
+                events.maximized += self._on_restored
+                self._minimized = False
+            except AttributeError:
+                pass
             webview.start()
-        except Exception as e:  # noqa: BLE001 - no WebView2 runtime, no display, ...
+        except Exception as e:  # noqa: BLE001 - no display, pythonnet missing, ...
             print(f"Alfred's window couldn't open ({type(e).__name__}: {e}). Using your browser instead.")
             self.window = None
+            self.window_failed = True
             return self.quitting.is_set()
         return True
 
+    def _on_minimized(self) -> None:
+        self._minimized = True
+
+    def _on_restored(self) -> None:
+        self._minimized = False
+
     def _on_closing(self):
-        if self.quitting.is_set() or not getattr(self.tray, "visible", False):
-            self.quitting.set()  # no tray icon: closing the window quits, so Alfred never runs unseen
+        # No tray icon: closing the window quits, so Alfred never runs unseen. Windows signing out or
+        # shutting down: never hold that up (pywebview doesn't say why the window is closing).
+        if self.quitting.is_set() or not getattr(self.tray, "visible", False) or _session_ending():
+            self.quitting.set()
             return True
         # pywebview waits for this handler on the window's thread, so hide the window from another one.
         threading.Timer(0.05, self._hide).start()
@@ -339,6 +373,27 @@ def tray_image(Image, ImageDraw):
     draw.line((18, 50, 32, 13, 46, 50), fill=gold, width=6, joint="curve")
     draw.line((24, 37, 40, 37), fill=gold, width=5)
     return img
+
+
+def _missing_webview2(platform: str = sys.platform) -> bool:
+    """Without the WebView2 runtime pywebview quietly uses Internet Explorer (MSHTML), which can't run
+    Alfred's page; it doesn't raise. Ask which engine it picked."""
+    if platform != "win32":
+        return False
+    from webview.platforms import winforms
+
+    return getattr(winforms, "renderer", "") == "mshtml"
+
+
+def _session_ending() -> bool:
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+
+        return bool(ctypes.windll.user32.GetSystemMetrics(SM_SHUTTINGDOWN))
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _open_browser(url: str) -> None:

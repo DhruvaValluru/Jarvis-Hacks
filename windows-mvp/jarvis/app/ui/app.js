@@ -1,6 +1,7 @@
 "use strict";
 // Alfred's window. Talks only to its own local server (server.py): JSON over /api and the event
-// feed at /api/events. All text from Alfred, Telegram or files is shown with textContent, never as HTML.
+// feed at /api/events, each call carrying this launch's key. All text from Alfred, Telegram or files
+// is shown with textContent, never as HTML.
 
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -46,15 +47,30 @@
   let retryMs = 1000;
   let retryTimer = null;
   let signedOut = false;
+  let paused = false;
   let settings = null;
   let telegramState = "off";
+  let engineError = "";
   const replied = new Set();
 
   // --- server -----------------------------------------------------------------
+  // The key comes in the page /auth served, then lives in sessionStorage, which only this origin
+  // (127.0.0.1 at Alfred's port) can read. Not a cookie: browsers send those to every port.
+  const key = (() => {
+    const meta = document.querySelector('meta[name="alfred-key"]');
+    let value = meta ? meta.content : "";
+    if (meta) meta.remove();
+    try {
+      if (value) sessionStorage.setItem("alfred-key", value);
+      else value = sessionStorage.getItem("alfred-key") || "";
+    } catch { /* storage blocked: this page works until it reloads */ }
+    if (location.pathname !== "/") history.replaceState(null, "", "/");
+    return value;
+  })();
+
   async function api(method, path, body) {
-    const options = { method, credentials: "same-origin", headers: {} };
+    const options = { method, headers: { "X-Alfred": key } };
     if (method !== "GET") {
-      options.headers["X-Alfred"] = "1";
       options.headers["Content-Type"] = "application/json";
       options.body = JSON.stringify(body || {});
     }
@@ -71,42 +87,81 @@
     return data;
   }
 
-  function connect() {
-    if (signedOut) return;
+  // The event feed is read with fetch, not EventSource, so it can send the key and notice a 401.
+  async function connect() {
+    if (signedOut || paused) return;
     clearTimeout(retryTimer);
-    if (feed) feed.close();
-    feed = new EventSource(lastSeq === null ? "/api/events" : `/api/events?after=${lastSeq}`);
-    feed.onopen = () => {
+    if (feed) feed.abort();
+    const mine = feed = new AbortController();
+    let opened = false;
+    try {
+      const response = await fetch(lastSeq === null ? "/api/events" : `/api/events?after=${lastSeq}`,
+        { headers: { "X-Alfred": key }, signal: mine.signal });
+      if (response.status === 401) return onSignedOut();
+      if (!response.ok || !response.body) throw new Error(`Alfred answered ${response.status}.`);
+      opened = true;
       retryMs = 1000;
       banner("conn", null);
       refreshStatus();
-    };
-    feed.onmessage = (message) => {
-      let event;
-      try { event = JSON.parse(message.data); } catch { return; }
-      handle(event);
-    };
-    feed.onerror = () => {
-      setPill("offline");
-      if (feed.readyState !== EventSource.CLOSED) {
-        banner("conn", "Reconnecting to Alfred…");  // the browser retries by itself
-        return;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let end;
+        while ((end = buffer.indexOf("\n\n")) >= 0) {
+          const block = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          for (const row of block.split("\n")) {
+            if (!row.startsWith("data:")) continue;  // ids repeat each event's seq; ":" lines keep it alive
+            let event;
+            try { event = JSON.parse(row.slice(5)); } catch { continue; }
+            try { handle(event); } catch (e) { console.error(e); }
+          }
+        }
       }
-      feed.close();
-      banner("conn", "Lost the connection to Alfred. Trying again…");
-      retryTimer = setTimeout(async () => {
-        await refreshStatus();
-        connect();
-      }, retryMs);
-      retryMs = Math.min(retryMs * 2, 15000);
-    };
+    } catch { /* dropped, stopped on purpose, or Alfred is gone */ }
+    if (feed !== mine) return;
+    feed = null;
+    setPill("offline");
+    banner("conn", opened ? "Lost the connection to Alfred. Trying again…" : "Alfred isn't answering. Trying again…");
+    retryTimer = setTimeout(async () => {
+      await refreshStatus();
+      connect();
+    }, retryMs);
+    retryMs = Math.min(retryMs * 2, 15000);
   }
+
+  function disconnect() {
+    clearTimeout(retryTimer);
+    if (feed) feed.abort();
+    feed = null;
+  }
+
+  // Browsers allow about six connections to one server, so a page nobody is looking at lets go of
+  // its feed. When it is shown again it catches up from lastSeq.
+  let hideTimer = null;
+  function resume() {
+    clearTimeout(hideTimer);
+    if (!paused || document.hidden) return;
+    paused = false;
+    connect();
+  }
+  function onVisibility() {
+    clearTimeout(hideTimer);
+    if (!document.hidden) resume();
+    else hideTimer = setTimeout(() => { paused = true; disconnect(); }, 10000);
+  }
+  document.addEventListener("visibilitychange", onVisibility);
+  window.addEventListener("pagehide", () => { paused = true; disconnect(); });
+  window.addEventListener("pageshow", resume);
 
   function onSignedOut() {
     if (signedOut) return;
     signedOut = true;
-    if (feed) feed.close();
-    clearTimeout(retryTimer);
+    disconnect();
     setPill("offline");
     banner("conn", "This window isn't signed in to Alfred any more (Alfred may have restarted). " +
       "Open Alfred again from its tray icon or the Start menu.", "error");
@@ -115,6 +170,7 @@
   async function refreshStatus() {
     let status;
     try { status = await api("GET", "/api/status"); } catch { return null; }
+    engineError = status.last_error || "";
     setPill(status.engine);
     setTelegram(status.telegram, status.telegram_error);
     const hotkey = status.hotkey;
@@ -169,6 +225,7 @@
         break;
       case "state":
         setPill(event.state);
+        if (event.state === "crashed") refreshStatus();  // for why: status.last_error
         break;
       case "telegram":
         setTelegram(event.state, event.error);
@@ -214,9 +271,10 @@
     const pill = $("pill");
     pill.dataset.state = state;
     pill.textContent = STATES[state] || state;
+    pill.title = state === "crashed" || state === "needs_consent" ? engineError : "";
     if (state === "needs_consent") showConsent();
     else if (state !== "offline" && state !== "off") $("consent").hidden = true;
-    banner("crash", state === "crashed" ? "Alfred's engine keeps stopping. See Activity, then restart it." : null,
+    banner("crash", state === "crashed" ? engineError || "Alfred's engine stopped." : null,
       "error", state === "crashed" ? ["Restart", restartEngine] : null);
   }
 
@@ -285,10 +343,13 @@
   async function restartEngine() {
     try {
       await api("POST", "/api/restart");
-      line("Restarting Alfred's engine…");
     } catch (e) {
       line(e.message, "error");
+      return;
     }
+    line("Restarting Alfred's engine…");
+    const status = await refreshStatus();  // an engine that can't start doesn't change the state: ask
+    if (status && status.engine === "crashed") line(status.last_error || "Alfred's engine didn't start.", "error");
   }
 
   function autosize() {
@@ -686,7 +747,7 @@
       try {
         await api("POST", "/api/quit");
         signedOut = true;
-        if (feed) feed.close();
+        disconnect();
         setPill("offline");
         banner("conn", "Alfred is closing. You can close this window.", "error");
       } catch (e) {
@@ -698,6 +759,7 @@
   }
 
   wire();
+  onVisibility();
   refreshStatus().then(connect);
   input.focus();
 })();

@@ -1,12 +1,14 @@
 """The Alfred app's local server: the core API over AlfredService, the UI's files, and local-only sign-in.
 
 Only this PC's Alfred window may drive Alfred. The server listens on 127.0.0.1 at a random port with
-a random secret per launch. The window first opens /auth?code=<one-time code>, which sets that
-secret as an HttpOnly, SameSite=Strict cookie and redirects to /. Every /api route but /api/health
-needs the cookie and a Host of 127.0.0.1:<port> or localhost:<port>; requests that change anything
-also need an Origin of that host and the header X-Alfred: 1, which another site's page can't send
-(we never answer CORS preflights). A second launch of the app asks this one to show its window
-through /api/instance/show with the instance token from data_dir()/run (see main.py).
+a random key per launch. The window first opens /auth?code=<one-time code>, which answers with the
+page and the key in a <meta>. The page keeps the key in sessionStorage, which browsers keep per
+origin (scheme, host and port), and sends it as the X-Alfred header on every /api call. Not a cookie:
+browsers send 127.0.0.1's cookies to every port, so any local server the browser visits would get it.
+Every request needs a Host of 127.0.0.1:<port> or localhost:<port> (a DNS-rebinding page sends its own
+name); requests that change anything also need an Origin of that host. Another site's page can't send
+the header (we never answer CORS preflights) or read the key. A second launch of the app asks this
+one to show its window through /api/instance/show with the instance token from data_dir()/run (see main.py).
 
 Routes: GET /api/health, /api/status, /api/events (SSE, ids = event seq), /api/settings,
 /api/audit, /api/consent; POST /api/command, /api/stop, /api/approval, /api/reset, /api/restart,
@@ -30,7 +32,8 @@ from ..service.bridge import KEYS as TELEGRAM_KEYS
 from .http import HTTPError, Request, Response, Router, make_server, serve_in_thread
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
-COOKIE = "alfred"
+KEY_HEADER = "X-Alfred"
+KEY_META = "alfred-key"
 CODE_TTL = 300  # seconds a one-time sign-in link works
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
        "font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
@@ -97,8 +100,8 @@ class App:
 
     # --- lifecycle --------------------------------------------------------
     def start(self, port: int = 0) -> "App":
-        self.server = make_server(self.router, "127.0.0.1", port, authorize=self.authorize, fallback=self.static,
-                                  extra_headers=SECURITY_HEADERS)
+        self.server = make_server(self.router, "127.0.0.1", port, authorize=self.authorize, check=self._check_host,
+                                  fallback=self.static, extra_headers=SECURITY_HEADERS)
         self.port = self.server.server_address[1]
         self.hosts = {f"127.0.0.1:{self.port}", f"localhost:{self.port}"}
         serve_in_thread(self.server)
@@ -133,24 +136,15 @@ class App:
 
     # --- auth ---------------------------------------------------------------
     def authorize(self, req: Request) -> bool:
-        self._check_host(req)
-        if req.method not in ("GET", "HEAD") and (
-            req.header("Origin").lower() != f"http://{req.header('Host').lower()}" or req.header("X-Alfred") != "1"
-        ):
+        if req.method not in ("GET", "HEAD") and req.header("Origin").lower() != f"http://{req.header('Host').lower()}":
             raise HTTPError(403, "Alfred only takes changes from its own window.")
-        return self._signed_in(req)
+        return _same(req.header(KEY_HEADER), self.secret)
 
     def _check_host(self, req: Request) -> None:
-        # A web page that points its own domain name at 127.0.0.1 still sends that name as Host.
+        """Every request, static files included. A web page that points its own domain name at
+        127.0.0.1 still sends that name as Host."""
         if req.header("Host").lower() not in self.hosts:
             raise HTTPError(403, "Alfred only answers its own window.")
-
-    def _signed_in(self, req: Request) -> bool:
-        for part in req.header("Cookie").split(";"):
-            name, _, value = part.strip().partition("=")
-            if name == COOKIE and _same(value, self.secret):
-                return True
-        return False
 
     def _take_code(self, code: str) -> bool:
         now = time.monotonic()
@@ -165,17 +159,21 @@ class App:
             return True
 
     def auth(self, req: Request) -> Response:
-        self._check_host(req)
+        """The page with this launch's key in a <meta>; app.js moves it to sessionStorage."""
         if not self._take_code(req.query.get("code", "")):
             return Response.text(_page("This sign-in link has already been used or is too old. Open Alfred again "
                                        "from its tray icon or the Start menu."), 403, TYPES[".html"])
-        return Response(303, b"", {
-            "Location": "/", "Cache-Control": "no-store",
-            "Set-Cookie": f"{COOKIE}={self.secret}; Path=/; HttpOnly; SameSite=Strict",
-        })
+        try:
+            html = (self.ui_dir / "index.html").read_text(encoding="utf-8")
+        except OSError as e:
+            raise HTTPError(404, "Not found.") from e
+        meta = f'<meta name="{KEY_META}" content="{self.secret}">'
+        html, found = re.subn(r"<head\b[^>]*>", lambda m: m.group(0) + meta, html, count=1)
+        if not found:
+            raise HTTPError(500, "Alfred's page has no <head>.")
+        return Response(200, html.encode("utf-8"), {"Content-Type": TYPES[".html"], "Cache-Control": "no-store"})
 
     def instance_show(self, req: Request) -> Response:
-        self._check_host(req)
         if not _same(req.header("X-Alfred-Instance"), self.instance_token):
             raise HTTPError(403, "Not Alfred.")
         if self.on_show is not None:
@@ -184,7 +182,6 @@ class App:
 
     # --- static UI ----------------------------------------------------------
     def static(self, req: Request) -> Response:
-        self._check_host(req)
         path = unquote(req.path)
         parts = (path.strip("/") or "index.html").split("/")
         if any(not p or p.startswith(".") or any(c in p for c in '\\:\0') for p in parts):

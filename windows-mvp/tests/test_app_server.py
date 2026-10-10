@@ -1,6 +1,8 @@
 """The Alfred app's local server and shell (jarvis/app/server.py, main.py) over FakeService.
 No window, tray or Windows needed: pywebview and pystray are never imported here."""
 
+import ctypes
+import functools
 import http.client
 import json
 import os
@@ -8,6 +10,7 @@ import re
 import sys
 import threading
 import time
+import types
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlsplit
@@ -19,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from jarvis import config, consent  # noqa: E402
 from jarvis.app import main as app_main  # noqa: E402
 from jarvis.app.server import CSP, UI_DIR, App, tail_jsonl  # noqa: E402
-from jarvis.service import QueueFull  # noqa: E402
+from jarvis.service import AlfredService, QueueFull  # noqa: E402
 from jarvis.service.fake import FakeService  # noqa: E402
 from jarvis.settings import MemoryBackend, Store  # noqa: E402
 
@@ -57,11 +60,12 @@ def app(env):
 
 
 class Client:
-    """Talks to the app like its window: signs in once, then sends the cookie, Origin and X-Alfred."""
+    """Talks to the app like its window: signs in once with the one-time link, then sends the key
+    (X-Alfred) on every call and its Origin on changes."""
 
     def __init__(self, app):
         self.app = app
-        self.cookie = ""
+        self.key = ""
 
     def raw(self, method, path, body=None, headers=None):
         conn = http.client.HTTPConnection("127.0.0.1", self.app.port, timeout=10)
@@ -73,15 +77,15 @@ class Client:
         return out
 
     def sign_in(self) -> "Client":
-        status, headers, _ = self.raw("GET", _path(self.app.login_url()))
-        assert status == 303 and headers["location"] == "/"
-        self.cookie = headers["set-cookie"].split(";")[0]
+        status, headers, page = self.raw("GET", _path(self.app.login_url()))
+        assert status == 200 and headers["cache-control"] == "no-store" and "set-cookie" not in headers
+        self.key = re.search(rb'<meta name="alfred-key" content="([^"]+)">', page).group(1).decode()
         return self
 
     def call(self, method, path, body=None, **headers):
-        sent = {"Cookie": self.cookie}
+        sent = {"X-Alfred": self.key}
         if method != "GET":
-            sent.update({"Origin": self.app.origin, "X-Alfred": "1", "Content-Type": "application/json"})
+            sent.update({"Origin": self.app.origin, "Content-Type": "application/json"})
             body = {} if body is None else body
         sent.update({k.replace("_", "-"): v for k, v in headers.items()})
         status, _, data = self.raw(method, path, body, {k: v for k, v in sent.items() if v is not None})
@@ -89,7 +93,7 @@ class Client:
 
     def events(self, until, after=0, last_event_id=None, timeout=10.0):
         """Read the event feed until until(event) is true. Checks each SSE id is the event's seq."""
-        headers = {"Cookie": self.cookie}
+        headers = {"X-Alfred": self.key}
         path = "/api/events"
         if last_event_id is not None:
             headers["Last-Event-ID"] = str(last_event_id)
@@ -129,15 +133,18 @@ def test_local_only_auth(app):
     client = Client(app)
     port = app.port
     assert client.raw("GET", "/api/health")[0] == 200
-    assert client.call("GET", "/api/status")[0] == 401  # no cookie
+    assert client.call("GET", "/api/status")[0] == 401  # no key
     assert client.raw("GET", "/auth?code=wrong")[0] == 403
 
+    # The one-time link answers with the page and the key in it, for the page to keep per origin
+    # (sessionStorage). Never a cookie: browsers send those to every port of 127.0.0.1.
     url = _path(app.login_url())
-    status, headers, _ = client.raw("GET", url)
-    assert status == 303 and headers["location"] == "/"
-    cookie = headers["set-cookie"]
-    assert "HttpOnly" in cookie and "SameSite=Strict" in cookie and "Path=/" in cookie
-    client.cookie = cookie.split(";")[0]
+    status, headers, page = client.raw("GET", url)
+    assert status == 200 and headers["cache-control"] == "no-store" and "set-cookie" not in headers
+    assert headers["content-type"].startswith("text/html") and b'src="app.js"' in page
+    assert f'<head><meta name="alfred-key" content="{app.secret}">'.encode() in page
+    assert app.secret.encode() not in client.raw("GET", "/")[2]
+    client.key = app.secret
     assert client.raw("GET", url)[0] == 403  # one time only
 
     stale = _path(app.login_url())
@@ -146,19 +153,26 @@ def test_local_only_auth(app):
 
     status, body = client.call("GET", "/api/status")
     assert status == 200 and body["engine"] == "ready"
-    assert Client(app).call("GET", "/api/status", Cookie="alfred=" + "x" * 43)[0] == 401
+    for wrong in ("x" * 43, "1", ""):
+        assert Client(app).call("GET", "/api/status", X_Alfred=wrong)[0] == 401
+    # Only the header counts: not a cookie (it would reach other local servers) nor the URL.
+    assert Client(app).call("GET", "/api/status", Cookie=f"alfred={app.secret}")[0] == 401
+    assert Client(app).call("GET", f"/api/status?key={app.secret}")[0] == 401
 
-    # Host must be this server: a DNS-rebinding page sends its own name.
-    assert client.call("GET", "/api/status", Host=f"evil.example:{port}")[0] == 403
+    # Host must be this server on every route, health and the page included: a DNS-rebinding page
+    # sends its own name.
+    for path in ("/api/status", "/api/health", "/", "/app.js", "/auth?code=x", "/api/nothing"):
+        assert client.call("GET", path, Host=f"evil.example:{port}")[0] == 403, path
+    assert client.call("POST", "/api/instance/show", Host=f"evil.example:{port}",
+                       X_Alfred_Instance=app.instance_token)[0] == 403
     assert client.call("GET", "/api/status", Host="127.0.0.1:1")[0] == 403
     assert client.call("GET", "/api/status", Host=f"localhost:{port}")[0] == 200
-    assert client.raw("GET", "/", headers={"Host": f"evil.example:{port}"})[0] == 403
 
-    # Changes need the app's Origin and X-Alfred: 1 as well as the cookie.
+    # Changes need the app's Origin as well as the key.
     assert client.call("POST", "/api/stop", Origin="http://evil.example")[0] == 403
     assert client.call("POST", "/api/stop", Origin=None)[0] == 403
-    assert client.call("POST", "/api/stop", X_Alfred=None)[0] == 403
-    assert client.call("POST", "/api/stop", X_Alfred="0")[0] == 403
+    assert client.call("POST", "/api/stop", X_Alfred=None)[0] == 401
+    assert client.call("POST", "/api/stop", X_Alfred="1")[0] == 401
     assert client.call("POST", "/api/stop", Host=f"localhost:{port}", Origin=f"http://localhost:{port}")[0] == 200
     assert Client(app).call("POST", "/api/stop")[0] == 401
 
@@ -248,7 +262,7 @@ def test_approval_round_trip(app):
 
 def test_settings_never_return_secrets_and_only_take_allowed_keys(app):
     client = Client(app).sign_in()
-    status, _, raw = client.raw("GET", "/api/settings", headers={"Cookie": client.cookie})
+    status, _, raw = client.raw("GET", "/api/settings", headers={"X-Alfred": client.key})
     assert status == 200 and KEY.encode() not in raw
     body = json.loads(raw)
     assert body["secrets"]["ANTHROPIC_API_KEY"] == {"set": True, "hint": "sk-ant-...9f2c"}
@@ -282,7 +296,7 @@ def test_secrets_are_write_only(app):
     assert status == 200 and body["set"] is True and body["hint"].endswith("7a1b") and value not in json.dumps(body)
     assert body["restarting"] is False  # only the Telegram bridge uses it
     assert app.store.get_secret("OPENAI_API_KEY") == value
-    _, _, raw = client.raw("GET", "/api/settings", headers={"Cookie": client.cookie})
+    _, _, raw = client.raw("GET", "/api/settings", headers={"X-Alfred": client.key})
     assert value.encode() not in raw
     assert client.call("GET", "/api/secrets/OPENAI_API_KEY")[0] == 405  # there is no way to read one
 
@@ -376,6 +390,8 @@ def test_real_ui_files_follow_the_csp(app):
     assert "http://" not in html and "https://" not in html  # no CDNs
     js = (UI_DIR / "app.js").read_text(encoding="utf-8")
     assert "innerHTML" not in js and "eval(" not in js and "https://" not in js
+    assert "new EventSource(" not in js and "document.cookie" not in js  # neither can carry the key
+    assert '"X-Alfred": key' in js and "last_error" in js
     for name in re.findall(r'(?:src|href)="([^"]+)"', html):
         assert client.raw("GET", "/" + name)[0] == 200, name
 
@@ -402,6 +418,26 @@ def test_telegram_reset_restart_and_quit(app):
     assert quit_called.wait(5)
 
 
+def test_an_engine_that_cant_start_says_why(env):
+    consent.record("test")
+    store = Store(env / "settings.env", MemoryBackend())
+    service = AlfredService(store, engine_cmd=[str(env / "missing" / "alfred-cli.exe"), "--engine"])
+    app = App(service, store=store, keepalive=0.2).start()
+    try:
+        app.start_service()
+        client = Client(app).sign_in()
+        status = client.call("GET", "/api/status")[1]
+        assert status["engine"] == "crashed" and "Couldn't start Alfred's engine" in status["last_error"]
+        after = service.bus.last_seq
+        assert client.call("POST", "/api/restart")[0] == 200
+        assert service.events(after, 0) == []  # no new event says it failed again: the window asks
+        status = client.call("GET", "/api/status")[1]
+        assert status["engine"] == "crashed" and "Couldn't start Alfred's engine" in status["last_error"]
+    finally:
+        service.shutdown(2)
+        app.close()
+
+
 def test_local_approvals_bring_the_window_forward(app):
     class Window:
         shown = 0
@@ -412,7 +448,7 @@ def test_local_approvals_bring_the_window_forward(app):
         def restore(self):
             pass
 
-    shell = app_main.Shell(app, app.service, window=False)
+    shell = app_main.Shell(app, app.service)
     shell.window = Window()
     shell._on_event({"type": "approval", "source": "telegram", "reason": "send it"})  # answered in Telegram
     shell._on_event({"type": "approval", "source": "remote", "reason": "copy a file here"})
@@ -421,6 +457,152 @@ def test_local_approvals_bring_the_window_forward(app):
         time.sleep(0.02)
     time.sleep(0.1)
     assert Window.shown == 1
+
+
+class FakeEvent:
+    def __init__(self):
+        self.handlers = []
+
+    def __iadd__(self, handler):
+        self.handlers.append(handler)
+        return self
+
+    def set(self):
+        return [handler() for handler in self.handlers]
+
+
+class FakeWindow:
+    def __init__(self, url):
+        self.url, self.calls = url, []
+        self.events = SimpleNamespace(**{name: FakeEvent() for name in ("closing", "minimized", "restored", "maximized")})
+
+    def __getattr__(self, name):  # show, restore, hide, destroy
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return lambda: self.calls.append(name)
+
+
+def _fake_webview(monkeypatch, renderer):
+    """pywebview as far as main.py uses it, with the engine pywebview would pick on Windows."""
+    windows = []
+    webview = types.ModuleType("webview")
+    webview.create_window = lambda title, url, **kw: windows.append(FakeWindow(url)) or windows[-1]
+    webview.start = lambda: None
+    webview.platforms = types.ModuleType("webview.platforms")
+    webview.platforms.winforms = types.ModuleType("webview.platforms.winforms")
+    webview.platforms.winforms.renderer = renderer
+    for module in (webview, webview.platforms, webview.platforms.winforms):
+        monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setattr(app_main, "_missing_webview2", functools.partial(app_main._missing_webview2, "win32"))
+    return windows
+
+
+def test_window_show_minimize_close_and_quit(app, monkeypatch):
+    opened, notes = [], []
+    monkeypatch.setattr(app_main, "_open_browser", opened.append)
+    windows = _fake_webview(monkeypatch, "edgechromium")
+    shell = app_main.Shell(app, app.service)
+    shell.show()  # a second launch while the window is still opening: no stray browser tab
+    assert opened == [] and windows == []
+
+    assert shell._run_window() is True and not shell.window_failed
+    window = shell.window
+    assert window is windows[0] and "/auth?code=" in window.url
+    shell.show()
+    assert window.calls == ["show"]  # restore() would un-maximize it
+    window.events.minimized.set()
+    shell.show()
+    assert window.calls == ["show", "show", "restore"]
+    window.events.maximized.set()
+    shell.show()
+    assert window.calls[-1] == "show" and opened == []
+
+    # With a tray icon, closing hides the window and says so once.
+    shell.tray = SimpleNamespace(visible=True, notify=lambda text, title: notes.append(text))
+    assert window.events.closing.set() == [False] and window.events.closing.set() == [False]
+    assert not shell.quitting.is_set() and len(notes) == 1 and "tray" in notes[0]
+    deadline = time.monotonic() + 5
+    while window.calls.count("hide") < 2 and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert window.calls.count("hide") == 2
+
+    # Windows signing out or shutting down: closing goes through, or Windows waits for Alfred.
+    monkeypatch.setattr(app_main, "_session_ending", lambda: True)
+    assert window.events.closing.set() == [True] and shell.quitting.is_set()
+
+    shell.quit()
+    assert window.calls[-1] == "destroy"
+    shell.show()
+    assert window.calls[-1] == "destroy" and opened == []
+
+
+def test_closing_without_a_tray_quits(app):
+    shell = app_main.Shell(app, app.service)
+    assert shell._on_closing() is True and shell.quitting.is_set()
+    shell = app_main.Shell(app, app.service)
+    shell.tray = SimpleNamespace(visible=False)
+    assert shell._on_closing() is True and shell.quitting.is_set()
+
+
+def test_without_webview2_alfred_uses_the_browser(app, monkeypatch):
+    """pywebview doesn't raise without the WebView2 runtime: it quietly uses Internet Explorer,
+    which can't run Alfred's page."""
+    opened = []
+    monkeypatch.setattr(app_main, "_open_browser", opened.append)
+    windows = _fake_webview(monkeypatch, "mshtml")
+    assert app_main._missing_webview2() and not app_main._missing_webview2.func("linux")
+    shell = app_main.Shell(app, app.service)
+    assert shell._run_window() is False and shell.window_failed and windows == []
+    shell.show()
+    assert len(opened) == 1 and "/auth?code=" in opened[0]
+
+
+def test_stop_hotkey_only_posts_to_its_running_thread(monkeypatch):
+    posted = []
+
+    class User32:
+        def __init__(self, registered):
+            self.registered, self.quit = registered, threading.Event()
+
+        def RegisterHotKey(self, *args):
+            return self.registered
+
+        def UnregisterHotKey(self, *args):
+            return 1
+
+        def GetMessageW(self, *args):
+            self.quit.wait(5)
+            return 0
+
+        def PostThreadMessageW(self, thread_id, message, *args):
+            posted.append((thread_id, message))
+            self.quit.set()
+
+    def windll(registered):
+        user32 = User32(registered)
+        monkeypatch.setattr(ctypes, "windll", SimpleNamespace(
+            user32=user32, kernel32=SimpleNamespace(GetCurrentThreadId=lambda: 4242)), raising=False)
+        return user32
+
+    def ended(hotkey):
+        deadline = time.monotonic() + 5
+        while hotkey.ok and time.monotonic() < deadline:
+            time.sleep(0.02)
+        return not hotkey.ok
+
+    windll(0)  # another app owns the shortcut
+    hotkey = app_main.StopHotkey(lambda: None).start()
+    assert not hotkey.ok and "taken by another app" in hotkey.error
+    hotkey.stop()
+    assert posted == []  # its thread is gone, and Windows reuses thread ids
+
+    windll(1)
+    hotkey = app_main.StopHotkey(lambda: None).start()
+    assert hotkey.ok and not hotkey.error
+    hotkey.stop()
+    assert posted == [(4242, app_main.WM_QUIT)] and ended(hotkey)
+    hotkey.stop()
+    assert len(posted) == 1
 
 
 def test_instance_lock(tmp_path):
@@ -440,29 +622,60 @@ def test_app_without_window_runs_shows_and_quits(env, monkeypatch):
     """python -m jarvis.app --fake-core --no-window, driven like a person would: open the link, a
     second launch shows Alfred again, Quit shuts everything down."""
     consent.record("test")
-    opened = []
+    opened, shells, trays, hotkeys = [], [], [], []
     monkeypatch.setattr(app_main, "_open_browser", opened.append)
+
+    class Shell(app_main.Shell):  # no real tray icon or global hotkey on the machine running the tests
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            shells.append(self)
+
+        def _start_tray(self):
+            trays.append(self)
+
+        def _run_window(self):
+            raise AssertionError("--no-window opened a window")
+
+    class Hotkey:
+        keys, ok, error = app_main.HOTKEY, False, "off in tests"
+
+        def __init__(self, on_press):
+            hotkeys.append(on_press)
+
+        def start(self):
+            return self
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(app_main, "Shell", Shell)
+    monkeypatch.setattr(app_main, "StopHotkey", Hotkey)
     result = []
     runner = threading.Thread(target=lambda: result.append(app_main.main(["--fake-core", "--no-window"])), daemon=True)
     runner.start()
-    deadline = time.monotonic() + 10
-    while not opened and time.monotonic() < deadline:
-        time.sleep(0.05)
-    assert opened, "the browser was never opened"
-    assert "webview" not in sys.modules and "pystray" not in sys.modules
+    try:
+        deadline = time.monotonic() + 10
+        while not opened and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert opened, "the browser was never opened"
+        assert len(trays) == 1 and len(hotkeys) == (sys.platform == "win32") and shells[0].window_failed
 
-    port = urlsplit(opened[0]).port
-    window = SimpleNamespace(port=port, origin=f"http://127.0.0.1:{port}", login_url=lambda: opened[0])
-    client = Client(window).sign_in()
-    assert client.call("GET", "/api/status")[1]["engine"] in ("starting", "ready")
-    assert not (config.data_dir() / "settings.env").exists()  # --fake-core keeps to its own settings
+        port = urlsplit(opened[0]).port
+        window = SimpleNamespace(port=port, origin=f"http://127.0.0.1:{port}", login_url=lambda: opened[0])
+        client = Client(window).sign_in()
+        assert client.call("GET", "/api/status")[1]["engine"] in ("starting", "ready")
+        assert not (config.data_dir() / "settings.env").exists()  # --fake-core keeps to its own settings
 
-    assert app_main.main(["--fake-core", "--no-window"]) == 0  # a second launch shows the first
-    assert len(opened) == 2 and opened[1] != opened[0]
+        assert app_main.main(["--fake-core", "--no-window"]) == 0  # a second launch shows the first
+        assert len(opened) == 2 and opened[1] != opened[0]
 
-    assert client.call("POST", "/api/quit")[0] == 200
-    runner.join(10)
-    assert not runner.is_alive() and result == [0]
+        assert client.call("POST", "/api/quit")[0] == 200
+        runner.join(10)
+        assert not runner.is_alive() and result == [0]
+    finally:
+        for shell in shells:
+            shell.quit()
+        runner.join(10)
     assert not (config.data_dir() / "run" / "alfred.json").exists()
     with pytest.raises(OSError):
         http.client.HTTPConnection("127.0.0.1", port, timeout=2).request("GET", "/api/health")

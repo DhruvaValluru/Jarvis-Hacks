@@ -113,11 +113,13 @@ def make_server(
     port: int = 0,
     *,
     authorize: Callable[[Request], bool] | None = None,
+    check: Callable[[Request], None] | None = None,
     fallback: Handler | None = None,
     extra_headers: dict | None = None,
 ) -> ThreadingHTTPServer:
-    """A threaded server for router. authorize(req) guards routes added with auth=True
-    (None allows everything; tests use that). fallback(req) answers unmatched GETs (static files)."""
+    """A threaded server for router. check(req) runs first for every request, routes and static
+    files alike, and refuses one by raising HTTPError. authorize(req) guards routes added with
+    auth=True (None allows everything; tests use that). fallback(req) answers unmatched GETs (static files)."""
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -126,11 +128,21 @@ def make_server(
         def log_message(self, *args):  # keep the console quiet; the app logs what matters
             pass
 
+        def _refuse(self, status: int, message: str):
+            resp = Response.json({"error": message}, status)
+            resp.headers["Connection"] = "close"  # the unread body would be taken for the next request
+            self._send(resp)
+
         def _handle(self):
             parts = urlsplit(self.path)
-            length = int(self.headers.get("Content-Length") or 0)
+            if self.headers.get("Transfer-Encoding"):
+                return self._refuse(411, "Send a Content-Length.")
+            sizes = self.headers.get_all("Content-Length") or ["0"]
+            if len(sizes) > 1 or not re.fullmatch(r"[0-9]{1,15}", sizes[0].strip()):
+                return self._refuse(400, "Bad Content-Length.")
+            length = int(sizes[0])
             if length > MAX_BODY:
-                return self._send(Response.json({"error": "Request too large."}, 413))
+                return self._refuse(413, "Request too large.")
             req = Request(
                 method=self.command,
                 path=parts.path,
@@ -140,6 +152,8 @@ def make_server(
                 client=self.client_address[0],
             )
             try:
+                if check is not None:
+                    check(req)
                 found = router.match(req.method, req.path)
                 if found is None:
                     if fallback is not None and req.method in ("GET", "HEAD"):
