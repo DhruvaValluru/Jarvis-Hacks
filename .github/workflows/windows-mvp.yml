@@ -24,7 +24,7 @@ jobs:
           cache-dependency-path: windows-mvp/requirements.lock.txt
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "22.23.3"  # exact; same as alfred-desktop.yml and packaging/fetch_node.ps1
           cache: npm
           cache-dependency-path: windows-mvp/telegram/package-lock.json
       - uses: actions/cache@v4

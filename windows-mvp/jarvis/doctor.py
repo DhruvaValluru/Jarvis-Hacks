@@ -13,7 +13,7 @@ import sys
 
 from . import config
 
-SPEC_VERSION = "2"
+SPEC_VERSION = "3"
 PYTHON = (3, 12)
 # Settings every test run uses (test.bat sets these; CI too).
 TEST_PROFILE = {

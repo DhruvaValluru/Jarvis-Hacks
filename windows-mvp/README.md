@@ -17,6 +17,10 @@ The first voice command downloads the speech model (about 150 MB). With no API k
 
 **Desktop app (preview):** `.venv\Scripts\python -m jarvis.app` opens Alfred in a window with a tray icon, a big STOP button, approvals, settings and an activity log. See [DESKTOP.md](DESKTOP.md).
 
+## Install the Alfred app (installer)
+
+Don't want Python and batch files? Every CI run builds **`Alfred-Setup-<version>.exe`**, a normal Windows installer: no admin rights, Start menu shortcut, uninstall from Settings > Apps. [INSTALL.md](INSTALL.md) says where to download it (the **Alfred-Setup** artifact of the `alfred-desktop` run on your PR's Checks tab), what to click when SmartScreen says "Unknown publisher" (test builds aren't signed yet), and how to uninstall or build it yourself.
+
 ## Getting your API key
 
 Jarvis needs an **Anthropic** API key. It starts with `sk-ant-`. Keys from other providers (for example OpenAI's `sk-proj-...`) won't work.

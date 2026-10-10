@@ -2,20 +2,19 @@
 
 The Alfred app is a normal window plus a tray icon. You type what you want, watch what Alfred is doing, answer its questions (Allow or Deny), and press **STOP** whenever you like. Telegram runs through the same app, so there is one conversation and one Stop for everything.
 
-Until the installer exists (task K1), run it from source.
+To install it like any other Windows app, use the installer: see [INSTALL.md](INSTALL.md). Or run it from source.
 
 ## Run it from source
 
 ```bat
 cd windows-mvp
 setup.bat
-.venv\Scripts\python -m pip install pywebview pystray
 .venv\Scripts\python -m jarvis.app
 ```
 
 - `pywebview` gives Alfred its own window (it uses Microsoft Edge WebView2, which Windows 11 already has). Without it, Alfred opens in your default browser instead. If the PC has no WebView2 Runtime, Alfred says so and uses the browser too.
 - `pystray` adds the tray icon. Without it there is no tray icon, so closing the window quits Alfred: it never keeps running where you can't see it.
-- Neither is in `requirements.lock.txt` yet, so `test.bat` and CI don't need them.
+- Both are in `requirements.lock.txt` (`requirements-desktop.txt`, test spec v3), so `setup.bat` installs them.
 
 Options:
 
@@ -52,6 +51,7 @@ Running it again while it's open just brings the open Alfred to the front.
 | API keys and tokens | Windows Credential Manager, as `Alfred/<NAME>` (protected by your Windows sign-in). The window only ever shows the last few characters; it can replace or remove a key but never read it back. |
 | Data notice acceptance | `%LOCALAPPDATA%\Jarvis\consent.json` |
 | Activity (audit log) | `%LOCALAPPDATA%\Jarvis\audit.jsonl` |
+| What the installed app prints (it has no console) | `%LOCALAPPDATA%\Jarvis\logs\alfred.log` (the run before: `alfred.log.1`) |
 | The running app's port (for a second launch) | `%LOCALAPPDATA%\Jarvis\run\` |
 
 Values in the environment or in `windows-mvp\.env` (from source) still win over saved settings; see `config.lookup`.
@@ -72,3 +72,4 @@ In `--no-window` mode the key lives in that browser tab until you close it; pref
 - `jarvis/app/main.py`: the window, tray, hotkey and single-instance lock. pywebview, pystray, Pillow and the Windows APIs are imported only when used.
 - `jarvis/app/ui/`: plain HTML, CSS and JavaScript, no frameworks or CDNs.
 - Tests: `tests/test_app_server.py` (runs anywhere, uses `FakeService`). The real engine behind it is tested in `tests/test_service.py`.
+- The installed app: `packaging/` builds `Alfred.exe` (this app, windowed) and `alfred-cli.exe` (the engine `AlfredService` starts when frozen, the self-test `--selftest` in `jarvis/selftest.py`) and the installer; see [INSTALL.md](INSTALL.md#build-it-yourself).
