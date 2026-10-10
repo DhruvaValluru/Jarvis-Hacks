@@ -78,6 +78,24 @@ requests expire after 60 seconds. Transcription runs separately so typed
 approval replies can still arrive. Two voice transcriptions may be active at
 once; voice notes are limited to 5 MB and 2 minutes.
 
+## Stopping Alfred from Telegram
+
+Send **`/stop`** for a hard stop. The PC kills the Windows worker and everything
+it started (a Claude request in flight, PowerShell, a computer-use drag), starts
+a fresh worker, and the fresh worker lets go of any mouse button or key that was
+still held down. You get "Stopping now." straight away and a "Stopped." message
+when Alfred is ready again (a few seconds). Pending approvals and queued commands
+are dropped and the conversation is reset. `/stop` must be typed; it is logged
+in the PC's audit log as `telegram_stop`.
+
+## Privacy
+
+`/start` and `/privacy` show where your data goes: messages pass through
+Telegram and Photon, voice notes and spoken replies use OpenAI, and requests,
+text Alfred reads and screenshots go to Anthropic. The full notice is
+[PRIVACY.md](PRIVACY.md). The person at the PC accepts it before the bridge
+starts; `jarvis-telegram.bat` asks if it hasn't been accepted yet.
+
 `/help` lists commands. `/reset` clears the current Claude conversation. Timers
 send replies to the owner's chat. Timers and conversation memory are in memory
 and do not survive restart.

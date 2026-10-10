@@ -201,3 +201,26 @@ class WinBackend:
             return bool(ctrl and ctrl.IsPassword)
         except Exception:  # noqa: BLE001 - if UIA can't tell, the model-side rules still apply
             return False
+
+
+MOUSE_BUTTON_VKS = {"left": 0x01, "right": 0x02, "middle": 0x04}
+
+
+def release_all(backend=None) -> list[str]:
+    """Let go of every mouse button and key that is still held down.
+
+    Run when a worker starts, so a hard stop (/stop) or crash in the middle of a
+    drag or a held key never leaves the PC with a stuck button. Returns what it released.
+    """
+    b = backend or WinBackend()
+    down = lambda vk: bool(b.user32.GetAsyncKeyState(vk) & 0x8000)  # noqa: E731
+    released = []
+    for name, vk in MOUSE_BUTTON_VKS.items():
+        if down(vk):
+            b.button(name, False)
+            released.append(f"{name} mouse button")
+    for vk in range(0x08, 0xFF):  # every keyboard virtual key
+        if down(vk):
+            b.key(vk, False)
+            released.append(f"key 0x{vk:02X}")
+    return released

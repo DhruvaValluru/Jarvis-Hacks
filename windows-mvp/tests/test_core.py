@@ -13,6 +13,7 @@ from jarvis.tools import registry  # noqa: E402
 def test_router():
     cases = {
         "Hey Jarvis, open Spotify": ("open_app", {"name": "spotify"}),
+        "Alfred, next song": ("media_control", {"action": "next"}),
         "jarvis open youtube.com": ("open_url", {"url": "youtube.com"}),
         "set volume to 30%": ("set_volume", {"percent": 30}),
         "next song": ("media_control", {"action": "next"}),

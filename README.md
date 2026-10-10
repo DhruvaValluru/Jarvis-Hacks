@@ -2,6 +2,8 @@
 
 An Iron Man–style "Jarvis": a voice-controlled assistant that sees and acts across all of your devices.
 
+The assistant is named **Alfred** (the code still uses the working name `jarvis`).
+
 **Primary target: Windows ↔ Windows.** It gives the deepest system access with the fewest gatekeepers. Macs, iPhones and iPads join later as secondary nodes.
 
 More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (general design) · [docs/APPLE_PLATFORM.md](docs/APPLE_PLATFORM.md) (Apple APIs and limits) · [docs/COMPUTER_USE_PLAN.md](docs/COMPUTER_USE_PLAN.md) (vision fallback) · [docs/CREDENTIALS_AND_USER_SECURITY.md](docs/CREDENTIALS_AND_USER_SECURITY.md) (passwords and user-side security)
