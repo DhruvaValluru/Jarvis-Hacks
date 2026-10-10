@@ -31,11 +31,13 @@ Legend: `[ ]` open · `[x]` done · `[-]` dropped · `needs:` must be done first
 
 ## 0. Integration (do these first; they unblock everyone)
 
-- [ ] **0.1** Merge PR #5 (shared test spec) into `main`. *Done when:* `main` has `test.bat`, `requirements.lock.txt`, and CI `spec-test` green.
+- [x] **0.1** Merge PR #5 (shared test spec) into `main`. *Done when:* `main` has `test.bat`, `requirements.lock.txt`, and CI `spec-test` green.
 - [x] **0.2** Merge PR #4 (computer use) after merging `main` into `eshaan-work`. needs: 0.1. *Done when:* `test.bat` passes in CI on the merged head. Resolve `tests/test_core.py` and `__main__.py` conflicts by keeping both sides.
 - [x] **0.3** Add `JARVIS_COMPUTER_USE` and `JARVIS_MAX_STEPS` to the test profile (`doctor.TEST_PROFILE` and `test.bat`), bump `SPEC_VERSION` to 2. needs: 0.2.
 - [x] **0.4** Open a PR for `Saatvik-Branch` (Telegram). Before it merges: (a) merge `main`; (b) move its CI steps into the new `spec-test` job (Node 22, `npm ci`, `npm test`) instead of the old job; (c) add Node 22 and the `package-lock.json` to the spec in TESTING.md and the doctor (spec bump); (d) add `tests/test_telegram.py` to `test.bat`. needs: 0.1.
 - [x] **0.5** Unify the reply and confirm hooks: Telegram adds `on_reply`/`on_confirm` to `Jarvis`; computer use adds its own confirms. Make every confirmation go through `Jarvis.confirm`, so a Telegram user gets the same y/N for Send/Delete and computer-use clicks. needs: 0.2, 0.4.
+- [ ] **0.7** PR #6 (browser voice mode on OpenAI's live voice model, `jarvisvoice`): decide how it relates to area D (local voice) and E3 (voice service). Then give it a task ID, merge `main`, and add its tests to `test.bat`, or keep it as a separate app.
+- [ ] **0.8** PR #7 (multi-PC control, peer-to-peer tool calls): reconcile with the hub/worker design in `docs/ARCHITECTURE.md` section 3.6 (tasks I1–I6) before merging. Decide: peer-to-peer now and the hub later, or the hub only. Then give it a task ID and merge `main`.
 - [ ] **0.6** Delete the stale branches `mvp` and `claude/sharp-bohr-sglils` (already merged). Ask the repo owner first.
 
 ## A. Core brain (Claude loop, routing, memory)
@@ -103,6 +105,7 @@ Legend: `[ ]` open · `[x]` done · `[-]` dropped · `needs:` must be done first
 - [ ] **F5** Audit log viewer: a local page listing actions with filters.
 - [ ] **F6** User-approved credential fill (plan in `docs/CREDENTIALS_AND_USER_SECURITY.md`). Not before F2.
 - [ ] **F8** Third-party data map: list what goes to Anthropic (prompts, screenshots), OpenAI (voice notes, reply audio) and Photon (Telegram messages), and show it to users in the README.
+- [ ] **F9** `npm ci` in `windows-mvp/telegram` reports 18 moderate vulnerabilities. Run `npm audit`, update what's safe, and note the rest. This changes `package-lock.json`, so it's a spec change.
 - [ ] **F7** Secrets hygiene: no keys in Git (scan in CI), `.env` only, and document key rotation.
 
 ## G. Testing spec and CI
