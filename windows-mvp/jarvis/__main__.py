@@ -76,12 +76,18 @@ def main() -> None:
     p.add_argument("--list-tools", action="store_true")
     args = p.parse_args()
 
+    cfg = config.load()
     if args.list_tools:
         for t in tools.TOOLS.values():
             print(f"{t.name:18} [{t.risk:7}] {t.description.splitlines()[0][:90]}")
+        state = "on" if cfg.computer_use else "off (JARVIS_COMPUTER_USE=0)"
+        print(f"{'computer':18} [toolset] screenshot, click, type, key, scroll, zoom ... : {state}")
         return
 
-    cfg = config.load()
+    if sys.platform == "win32":
+        from .tools.wininput import enable_dpi_awareness
+
+        enable_dpi_awareness()  # before any window or screen code, so screenshots and clicks line up
     from .voice import Speaker
 
     speaker = Speaker(enabled=cfg.speak and not args.quiet)
@@ -95,6 +101,8 @@ def main() -> None:
     print("=" * 60)
     print(" JARVIS - Windows MVP")
     print(f" Brain: {cfg.model} (effort {cfg.effort})" if cfg.has_llm else " Brain: none (no API key) - simple commands only")
+    if cfg.has_llm and cfg.computer_use:
+        print(" Computer use: on. Move the mouse to the top-left corner to take it back.")
     listener = None
     if not args.text:
         try:
