@@ -1,16 +1,13 @@
 # Live task board
 
-_Auto-generated 2026-10-10 20:35 UTC from [TASKS.md](TASKS.md), open PRs and branches. Do not edit; changes are overwritten._
+_Auto-generated 2026-10-10 20:41 UTC from [TASKS.md](TASKS.md), open PRs and branches. Do not edit; changes are overwritten._
 
-**Progress:** 18 of 81 tasks done.
+**Progress:** 22 of 85 tasks done.
 
 ## In progress (claimed)
 
 | Task | Title | Claimed by |
 |---|---|---|
-| **C10** | Remote stop for computer use: the corner kill switch only works for someone at the PC. When a task comes from Telegram, `/stop` must abort computer use mid-turn. | PR #8 (DhruvaValluru, `claude/funny-tesla-rxt8yr`, draft) |
-| **E7** | Remote computer-use guardrails: decide whether computer use is allowed from Telegram by default (screenshots of the PC leave the house, and nobody is at the PC to stop the mouse). Add `JARVIS_REMOTE_COMPUTER_USE` if needed. | PR #8 (DhruvaValluru, `claude/funny-tesla-rxt8yr`, draft) |
-| **F8** | Third-party data map: list what goes to Anthropic (prompts, screenshots), OpenAI (voice notes, reply audio) and Photon (Telegram messages), and show it to users in the README. | PR #8 (DhruvaValluru, `claude/funny-tesla-rxt8yr`, draft) |
 | **I4** | Handoff: "send this tab/file/clipboard to my laptop". | PR #9 (DhruvaValluru, `communications`, draft) |
 | **I5** | "What's my desktop doing?" from another PC. | PR #9 (DhruvaValluru, `communications`, draft) |
 
@@ -21,8 +18,9 @@ First 3 per area. Take the lowest number in your area.
 
 **0. Integration (do these first; they unblock everyone)**
 
-- **0.1** Merge PR #5 (shared test spec) into `main`.
-- **0.6** Delete the stale branches `mvp` and `claude/sharp-bohr-sglils` (already merged). Ask the repo owner first.
+- **0.7** PR #6 (browser voice mode on OpenAI's live voice model, `jarvisvoice`): decide how it relates to area D (local voice) and E3 (voice service). Then give it a task ID, merge `main`, and add its tests to `test.bat`, or keep it as a separate app.
+- **0.8** PR #7 (multi-PC control, peer-to-peer tool calls): reconcile with the hub/worker design in `docs/ARCHITECTURE.md` section 3.6 (tasks I1–I6) before merging. Decide: peer-to-peer now and the hub later, or the hub only. Then give it a task ID and merge `main`.
+- **0.9** The assistant's name is **Alfred**. *Done:* what users see (Claude's self-name, console text, Telegram, data notice, MVP README; the wake word accepts "Alfred" and "Jarvis"). *Open:* decide whether to also rename code, scripts and the repo (`jarvis.bat`, `python -m jarvis`); that breaks every open branch, so do it only at a quiet moment.
 
 **A. Core brain (Claude loop, routing, memory)**
 
