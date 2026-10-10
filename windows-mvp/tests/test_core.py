@@ -79,6 +79,14 @@ def test_brain_loop():
     del registry.TOOLS["_echo"]
 
 
+def test_spec_lock_is_exact():
+    from jarvis import doctor
+
+    pins = doctor.lock_pins()
+    assert {"anthropic", "uiautomation", "faster-whisper", "pywin32"} <= set(pins)
+    assert all(v and v[0].isdigit() for v in pins.values())
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

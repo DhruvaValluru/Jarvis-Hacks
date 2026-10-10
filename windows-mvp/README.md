@@ -9,6 +9,8 @@ A voice assistant for one Windows 10/11 PC. It opens apps and works inside them 
 3. Double-click **`windows-mvp\jarvis.bat`**.
 4. Press **Enter** and talk, or type a command.
 
+**Testing:** run `test.bat`. Everyone tests against one pinned spec (Python 3.12, exact package versions, fixed settings). See [TESTING.md](TESTING.md).
+
 The first voice command downloads the speech model (about 150 MB). With no API key, the simple commands still work.
 
 ## Things to try

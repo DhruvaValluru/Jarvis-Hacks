@@ -5,6 +5,7 @@
   python -m jarvis --wake       hands-free: say "Jarvis, ..." any time
   python -m jarvis --do "open notepad"   run one command and exit
   python -m jarvis --list-tools
+  python -m jarvis --doctor     check this PC matches the shared test spec
 """
 
 import argparse
@@ -74,7 +75,13 @@ def main() -> None:
     p.add_argument("--do", metavar="COMMAND", help="run one command and exit")
     p.add_argument("--quiet", action="store_true", help="don't speak replies")
     p.add_argument("--list-tools", action="store_true")
+    p.add_argument("--doctor", action="store_true", help="check this PC matches the test spec")
     args = p.parse_args()
+
+    if args.doctor:
+        from . import doctor
+
+        sys.exit(doctor.main())
 
     if args.list_tools:
         for t in tools.TOOLS.values():

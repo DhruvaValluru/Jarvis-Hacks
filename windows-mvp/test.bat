@@ -1,0 +1,28 @@
+@echo off
+setlocal
+cd /d "%~dp0"
+rem The one test command everyone runs. Same settings for every person, agent and CI.
+if not exist .venv\Scripts\python.exe ( echo Run setup.bat first. & exit /b 1 )
+set "PY=.venv\Scripts\python.exe"
+set JARVIS_MODEL=claude-opus-5-5
+set JARVIS_EFFORT=low
+set JARVIS_WHISPER_MODEL=base.en
+set JARVIS_FALLBACKS=1
+set JARVIS_SPEAK=0
+set FAILED=0
+
+echo === 1/4 Environment check ===
+%PY% -m jarvis --doctor || ( echo Your setup does not match the spec. Run setup.bat, then test again. & exit /b 1 )
+echo.
+echo === 2/4 Unit tests ===
+%PY% -m pytest -q tests\test_core.py || set FAILED=1
+echo.
+echo === 3/4 Windows smoke test (Notepad via UI Automation) ===
+%PY% tests\smoke_windows.py || set FAILED=1
+echo.
+echo === 4/4 Voice pipeline (offline) ===
+%PY% tests\voice_pipeline.py || set FAILED=1
+echo.
+if "%FAILED%"=="1" ( echo RESULT: FAILED & exit /b 1 )
+echo RESULT: ALL PASSED
+exit /b 0
