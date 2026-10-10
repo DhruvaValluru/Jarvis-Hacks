@@ -5,6 +5,7 @@
   python -m jarvis --wake       hands-free: say "Alfred, ..." any time
   python -m jarvis --do "open notepad"   run one command and exit
   python -m jarvis --serve       let other PCs use this PC's tools (prints pairing info)
+  python -m jarvis --show-token  print this PC's JARVIS_TOKEN to pair another PC
   python -m jarvis --list-tools
   python -m jarvis --doctor     check this PC matches the shared test spec
   python -m jarvis --terms      show the data notice and accept it (setup.bat runs this)
@@ -16,6 +17,7 @@ Multi-PC: put the same JARVIS_TOKEN in .env on each PC (see jarvis/remote.py), t
 import argparse
 import re
 import sys
+import threading
 
 from . import config, consent, remote, router, tools
 from .tools import registry
@@ -27,6 +29,27 @@ def console_confirm(reason: str) -> bool:
     except EOFError:
         return False
     return answer.strip().lower() in ("y", "yes")
+
+
+_ask_lock = threading.Lock()
+
+
+def local_confirm(reason: str, timeout: int = 60) -> bool:
+    """Another PC wants to do something consequential here: ask whoever sits at this PC, one at a time.
+    On Windows a dialog, since the console may be waiting for the next command; no answer means no."""
+    with _ask_lock:
+        if sys.platform != "win32":
+            return console_confirm(reason)
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        text = f"Another of your PCs asks Alfred to:\n\n{reason}\n\nAllow it on this PC? (No after {timeout} s.)"
+        flags = 0x4 | 0x30 | 0x100 | 0x1000 | 0x10000 | 0x40000  # Yes/No, warning, No first, on top of everything
+        try:
+            answer = user32.MessageBoxTimeoutW(None, text, "Alfred", flags, 0, timeout * 1000)
+        except AttributeError:
+            answer = user32.MessageBoxW(None, text, "Alfred", flags)
+        return answer == 6  # IDYES
 
 
 class Jarvis:
@@ -105,6 +128,7 @@ def main() -> None:
     p.add_argument("--do", metavar="COMMAND", help="run one command and exit")
     p.add_argument("--quiet", action="store_true", help="don't speak replies")
     p.add_argument("--serve", action="store_true", help="only serve this PC's tools to other PCs")
+    p.add_argument("--show-token", action="store_true", help="print this PC's JARVIS_TOKEN to pair another PC")
     p.add_argument("--list-tools", action="store_true")
     p.add_argument("--doctor", action="store_true", help="check this PC matches the test spec")
     p.add_argument("--terms", action="store_true", help="show the data notice and accept it")
@@ -129,6 +153,10 @@ def main() -> None:
         sys.exit(doctor.main())
 
     cfg = config.load()
+    if args.show_token:
+        print(f"JARVIS_TOKEN={cfg.token or remote.ensure_token()}")
+        print(f"Put this line in {config.settings_location()} on your other PCs. Keep it secret: it controls this PC.")
+        return
     if args.list_tools:
         for t in tools.TOOLS.values():
             if t.hidden:
@@ -150,6 +178,8 @@ def main() -> None:
 
     speaker = Speaker(enabled=cfg.speak and not args.quiet)
     registry.speak = lambda text: speaker.say(text) if speaker.enabled else print(f"(says) {text}")
+    if args.serve or cfg.serve:
+        remote.set_local_confirm(local_confirm)  # what other PCs want to do here is approved here
     if args.serve:
         print("=" * 60)
         print(" ALFRED - serving this PC to your other PCs. Ctrl+C to stop.")
@@ -158,9 +188,15 @@ def main() -> None:
             remote.serve(cfg)
         except KeyboardInterrupt:
             print("\nBye.")
+        except (OSError, ValueError) as e:
+            print(f" Couldn't share this PC. {e}")
+            sys.exit(1)
         return
     if cfg.serve:
-        remote.serve(cfg, log_fn=lambda s: print(f" {s}"), background=True)
+        try:
+            remote.serve(cfg, log_fn=lambda s: print(f" {s}"), background=True)
+        except (OSError, ValueError) as e:
+            print(f" Couldn't share this PC with your other PCs. {e}")
     remote.connect(cfg, log_fn=lambda s: print(f" {s}"))
     jarvis = Jarvis(cfg, speaker)
 

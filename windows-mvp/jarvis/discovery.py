@@ -1,9 +1,11 @@
-"""Find the other Jarvis PCs automatically: no IP addresses to type.
+"""Find your other Alfred PCs automatically: no IP addresses to type.
 
 A serving PC answers UDP probes on port 8766. The PC you talk to sends a probe as a
 LAN broadcast and straight to each online Tailscale peer (broadcasts don't cross
 Tailscale). Both sides prove they hold the same JARVIS_TOKEN with an HMAC, so a
-stranger on the network can't find or impersonate your PCs.
+stranger on the network can't find or impersonate your PCs. A PC that listens on one
+address (its Tailscale or LAN IP) says which in the signed reply, so a copied reply sent
+from somewhere else can't point your PCs, and their token, at another machine.
 """
 
 import hashlib
@@ -23,17 +25,27 @@ def _mac(token: str, *parts: str) -> str:
     return hmac.new(token.encode(), "|".join(parts).encode(), hashlib.sha256).hexdigest()[:32]
 
 
-class Responder:
-    """Answers probes from PCs that share our token (runs on every serving PC)."""
+def _here_mac(token: str, nonce: str, name: str, port: int, host: str) -> str:
+    return _mac(token, "here", nonce, name, str(port), *([host] if host else []))
 
-    def __init__(self, name: str, http_port: int, token: str, port: int = PORT, log: Callable[[str], None] = print):
-        self.name, self.http_port, self.token = name, http_port, token
+
+class Responder:
+    """Answers probes from PCs that share our token (runs on every serving PC).
+
+    host: the address the tool server listens on, or "" if it listens on every network
+    (then the other PC uses the address the reply came from)."""
+
+    def __init__(self, name: str, http_port: int, token: str, port: int = PORT, log: Callable[[str], None] = print,
+                 host: str = ""):
+        self.name, self.http_port, self.token, self.host = name, http_port, token, host
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):  # Windows: a second Alfred can't take over the port
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         try:
             self.sock.bind(("", port))
         except OSError as e:
-            log(f"Auto-discovery is off (UDP port {port} is busy: {e}). List this PC in JARVIS_DEVICES instead.")
+            log(f"Auto-discovery is off: UDP port {port} is in use ({e.strerror or e}). Is Alfred already sharing "
+                "this PC? Otherwise list this PC in JARVIS_DEVICES on the others.")
             self.sock.close()
             return
         threading.Thread(target=self._run, daemon=True, name="jarvis-discovery").start()
@@ -52,7 +64,8 @@ class Responder:
                     "jarvis": "here",
                     "name": self.name,
                     "port": self.http_port,
-                    "mac": _mac(self.token, "here", nonce, self.name, str(self.http_port)),
+                    "host": self.host,
+                    "mac": _here_mac(self.token, nonce, self.name, self.http_port, self.host),
                 }
                 self.sock.sendto(json.dumps(reply).encode(), addr)
             except (OSError, ValueError, KeyError, TypeError):
@@ -60,7 +73,7 @@ class Responder:
 
 
 def probe(token: str, targets: list[tuple[str, int]] | None = None, timeout: float = 0.6) -> list[tuple[str, str, int]]:
-    """Ask who's out there. Returns [(name, ip, http_port)] for PCs with the same token."""
+    """Ask who's out there. Returns [(name, address, http_port)] for PCs with the same token."""
     if targets is None:
         targets = [("255.255.255.255", PORT)] + [(ip, PORT) for ip in tailscale_peers()]
     nonce = secrets.token_hex(8)
@@ -79,11 +92,11 @@ def probe(token: str, targets: list[tuple[str, int]] | None = None, timeout: flo
             try:
                 data, (ip, _) = s.recvfrom(2048)
                 r = json.loads(data)
-                name, port = str(r["name"]), int(r["port"])
+                name, port, host = str(r["name"]), int(r["port"]), str(r.get("host") or "")
                 if r.get("jarvis") == "here" and hmac.compare_digest(
-                    str(r.get("mac", "")), _mac(token, "here", nonce, name, str(port))
+                    str(r.get("mac", "")), _here_mac(token, nonce, name, port, host)
                 ):
-                    found[name] = (name, ip, port)
+                    found[name] = (name, host or ip, port)
             except socket.timeout:
                 break
             except (OSError, ValueError, KeyError, TypeError):

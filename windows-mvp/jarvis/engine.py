@@ -6,7 +6,9 @@ Protocol v2: one JSON object per line on stdin and stdout; stderr is the log.
        status{id,kind,text}  reply{id,source,text}  announce{text[,source]}  notice{text}
        approval{token,reason,timeout,id,source}  approval_closed{token,approved,by}  done{id,ok}  pong{n}
 Commands run one at a time on the main thread; a reader thread takes approvals, pings and EOF
-while one runs. jarvis.service.AlfredService starts it; telegram_worker.py speaks the older v1.
+while one runs. An approval with source "remote" is another PC asking to act on this one; only
+someone at this PC (the app) should answer it.
+jarvis.service.AlfredService starts it; telegram_worker.py speaks the older v1.
 """
 
 import json
@@ -185,6 +187,10 @@ class Engine:
     def confirm(self, reason: str) -> bool:
         return self.approvals.request(reason, **self.approval_context())
 
+    def confirm_for_pc(self, reason: str) -> bool:
+        """Another PC wants to do something consequential here: ask in the app, not where a command came from."""
+        return self.approvals.request(reason, id=None, source="remote")
+
     def read_input(self, stream) -> None:
         try:
             for line in stream:
@@ -265,10 +271,11 @@ class Engine:
         """Let Alfred reach this user's other PCs (and, with JARVIS_SERVE=1, be reached by them)."""
         cfg = self.cfg
         if self.serve and cfg.serve:
+            remote.set_local_confirm(self.confirm_for_pc)
             try:
                 remote.serve(cfg, log_fn=self.remote_log, background=True)
-            except OSError as e:
-                self.remote_log(f"Couldn't share this PC with your other PCs ({e}).")
+            except (OSError, ValueError) as e:
+                self.remote_log(f"Couldn't share this PC with your other PCs. {e}")
         remote.connect(cfg, log_fn=self.remote_log)
 
     def run(self, stdin=None) -> int:

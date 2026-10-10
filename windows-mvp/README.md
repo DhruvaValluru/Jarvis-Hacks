@@ -68,17 +68,19 @@ An optional custom service can replace both through [VOICE_API.md](VOICE_API.md)
 One Jarvis can work on all your PCs: "open Spotify on the laptop", "say dinner's ready on computer 2", "copy build.zip from computer 2 to here and unzip it", "send my clipboard to the laptop".
 
 1. Put the PCs on the same network: the same home Wi-Fi, or [Tailscale](https://tailscale.com/download) on each PC signed in to one account. Tailscale is private and encrypted, and it works when the PCs are in different places.
-2. On computer 2, run `jarvis.bat --serve`. It prints a `JARVIS_TOKEN=...` line. Click **Allow** if Windows Firewall asks.
-3. Paste that line into `windows-mvp\.env` on computer 1 and run `jarvis.bat`. It finds computer 2 by itself and says `Connected to laptop at 100.64.0.2:8765 (25 tools, 3 ms)`.
+2. On computer 2, run `jarvis.bat --show-token`. It prints a `JARVIS_TOKEN=...` line (and makes the token if there isn't one yet; it's kept in Windows Credential Manager, not in a file). Paste that line into `windows-mvp\.env` on computer 1.
+3. On computer 2, run `jarvis.bat --serve`, and click **Allow** if Windows Firewall asks. On computer 1, run `jarvis.bat`. It finds computer 2 by itself and says `Connected to laptop at 100.64.0.2:8765 (25 tools, 3 ms)`.
 
-You don't type any IP addresses. If discovery can't see a PC (some routers block broadcasts), add the `JARVIS_DEVICES=...` line that `--serve` also prints. To control both PCs from either one, set `JARVIS_SERVE=1` on both and use the same token.
+You don't type any IP addresses. If discovery can't see a PC (some routers block broadcasts), add the `JARVIS_DEVICES=...` line that `--serve` also prints. To control both PCs from either one, set `JARVIS_SERVE=1` on both and use the same token. Sharing is off unless you run `--serve` or set `JARVIS_SERVE=1`.
+
+A shared PC listens only on its Tailscale address, or on its home-network address when there's no Tailscale, never on every network. `JARVIS_SERVE_HOST` picks another address (`0.0.0.0` means every network: only on networks you trust). If the PC's address changes (another Wi-Fi), restart Alfred there.
 
 | Say | What happens |
 |---|---|
 | "Open Spotify on the laptop" / "tell computer 2 to pause" / "say hi on the laptop" | Instant, no AI call: the fast path runs it on that PC |
 | "Send my clipboard to the laptop" | Instant clipboard handoff |
 | "Copy report.docx from the laptop to my Downloads and open it" | `copy_file` streams the file at full network speed (any size), then opens it here |
-| "Remind me in 10 minutes on the laptop" | The reminder comes back and is spoken on the PC you're talking to |
+| "Remind me in 10 minutes on the laptop" | The reminder comes back, only to the PC you set it from, and is spoken there |
 | "What's the laptop doing?" | Answered right away: each PC pushes its active window and whether someone's using it |
 | "Build it on computer 2, copy it here and run it" | Claude chains PCs; calls to different PCs in one step run at the same time |
 
@@ -89,9 +91,11 @@ You don't type any IP addresses. If discovery can't see a PC (some routers block
 - Claude already knows what every PC is showing when you ask, which saves a whole round trip.
 
 **Safety:**
-- Every request, and every discovery reply, has to prove the shared token. A stranger on your network can't find, control or impersonate your PCs.
-- Actions that need approval, including writing files, are confirmed on the PC you're talking to. The serving PC refuses them otherwise.
-- Don't expose port 8765 to the internet. Each PC logs what it ran in its own audit log.
+- Every request, and every discovery reply, has to prove the shared token. A stranger on your network can't find, control or impersonate your PCs. The token must be at least 16 characters, and Alfred never shows it in its logs.
+- Actions that need approval (PowerShell, Send buttons, writing files) are asked twice: on the PC you're talking to, and then by the PC that would do them, to whoever sits at it (a popup from `jarvis.bat`, an approval in the Alfred app). No answer within 60 seconds means no. If you own both PCs and one approval is enough for you, set `JARVIS_REMOTE_TRUST_CALLER=1` on the PC being controlled.
+- Files sent to a PC go to its Downloads folder unless you give a full path, never into Alfred's own folders, and only if the disk has room. An existing file is replaced only when you ask to overwrite it.
+- What other PCs report (their window titles) reaches Claude marked as untrusted data, like any text on screen.
+- Don't expose port 8765 to the internet. Each PC logs what it ran in its own audit log, including every file another PC read from it or wrote to it.
 
 ## Modes
 
@@ -100,7 +104,8 @@ jarvis.bat            press Enter to talk, or type
 jarvis.bat --wake     hands-free: say "Jarvis, ..." any time
 jarvis.bat --text     typing only
 jarvis.bat --do "open notepad"
-jarvis.bat --serve    let your other PCs use this one (prints the token)
+jarvis.bat --serve    let your other PCs use this one (prints how to pair)
+jarvis.bat --show-token   print this PC's JARVIS_TOKEN, to pair another PC
 jarvis.bat --list-tools
 ```
 

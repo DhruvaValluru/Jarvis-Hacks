@@ -73,9 +73,10 @@ class Config:
     devices: dict = field(default_factory=dict)  # {"laptop": "100.64.0.2:8765"}
     token: str = ""
     serve: bool = False
-    serve_host: str = "0.0.0.0"
+    serve_host: str = ""  # "" = this PC's Tailscale address, else its private LAN address (remote.default_host)
     port: int = 8765
     discover: bool = True
+    remote_trust_caller: bool = False  # run approved calls from other PCs without asking the person here
 
     @property
     def has_llm(self) -> bool:
@@ -142,9 +143,10 @@ def load(store=None) -> Config:
         devices=parse_devices(get("JARVIS_DEVICES")),
         token=get("JARVIS_TOKEN"),
         serve=get("JARVIS_SERVE", "0") == "1",
-        serve_host=get("JARVIS_SERVE_HOST", "0.0.0.0"),
+        serve_host=get("JARVIS_SERVE_HOST"),
         port=int(get("JARVIS_PORT") or "8765"),
         discover=get("JARVIS_DISCOVER", "1") != "0",
+        remote_trust_caller=get("JARVIS_REMOTE_TRUST_CALLER", "0") == "1",
     )
 
 

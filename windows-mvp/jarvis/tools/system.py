@@ -66,14 +66,33 @@ def _endpoint():
 )
 def set_volume(percent: int) -> str:
     percent = max(0, min(int(percent), 100))
+    com = _com_init()  # calls from another PC run on a fresh server thread
     try:
-        ep = _endpoint()
-        ep.SetMute(0, None)
-        ep.SetMasterVolumeLevelScalar(percent / 100, None)
+        _set_level(percent / 100)
     except Exception:  # noqa: BLE001 - no pycaw / no audio device: step with the volume keys
         press_vk(VK["volume_down"], 50)
         press_vk(VK["volume_up"], round(percent / 2))
+    finally:
+        if com:
+            com.CoUninitialize()
     return f"Volume set to {percent}%."
+
+
+def _set_level(level: float) -> None:
+    ep = _endpoint()  # released when this returns, before COM is shut down on this thread
+    ep.SetMute(0, None)
+    ep.SetMasterVolumeLevelScalar(level, None)
+
+
+def _com_init():
+    """Start COM on this thread. Returns pythoncom when the caller must undo it, else None."""
+    try:
+        import pythoncom
+
+        pythoncom.CoInitialize()
+        return pythoncom
+    except Exception:  # noqa: BLE001 - no pywin32, or COM is already set up differently on this thread
+        return None
 
 
 @tool("open_url", "Open a web address in the default browser.", {"url": {"type": "string"}}, required=["url"])
@@ -140,7 +159,7 @@ def system_status() -> str:
 
 @tool(
     "set_timer",
-    "Set a timer or reminder; Jarvis will say the message when it goes off.",
+    "Set a timer or reminder; Alfred will say the message when it goes off.",
     {"seconds": {"type": "integer", "minimum": 1}, "message": {"type": "string"}},
     required=["seconds"],
 )
