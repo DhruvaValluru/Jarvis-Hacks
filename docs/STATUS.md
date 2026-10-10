@@ -9,6 +9,8 @@ _Auto-generated 2026-10-10 20:33 UTC from [TASKS.md](TASKS.md), open PRs and bra
 | Task | Title | Claimed by |
 |---|---|---|
 | **0.1** | Merge PR #5 (shared test spec) into `main`. | PR #8 (DhruvaValluru, `claude/funny-tesla-rxt8yr`, draft) |
+| **I4** | Handoff: "send this tab/file/clipboard to my laptop". | PR #9 (DhruvaValluru, `communications`, draft) |
+| **I5** | "What's my desktop doing?" from another PC. | PR #9 (DhruvaValluru, `communications`, draft) |
 
 ## Ready to start (open, unclaimed, dependencies done)
 
@@ -71,7 +73,6 @@ First 3 per area. Take the lowest number in your area.
 
 - **I1** Pick the hub host (our FastAPI hub or Claude Managed Agents) per `docs/ARCHITECTURE.md` section 3.6, and write the job protocol (job, result, heartbeat) between hub and PC workers.
 - **I2** Pairing with a QR code and per-device keys; transport over Tailscale or WebSocket with TLS.
-- **I4** Handoff: "send this tab/file/clipboard to my laptop".
 
 **K. Packaging and deployment**
 
@@ -100,6 +101,5 @@ First 3 per area. Take the lowest number in your area.
 
 ## Needs attention
 
-- PR #9 "Communications: PCs find each other, push live updates, stream files" on `communications`: add a task ID like `[C6]` to the title
 - PR #7 "Let one Jarvis control your other PCs" on `claude/zealous-ramanujan-1tzfmr`: add a task ID like `[C6]` to the title
 - PR #6 "Add Jarvis voice: talk to Jarvis like ChatGPT voice mode" on `jarvisvoice`: add a task ID like `[C6]` to the title
