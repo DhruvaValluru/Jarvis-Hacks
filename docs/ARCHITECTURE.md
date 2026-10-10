@@ -4,7 +4,7 @@ The goal is one assistant that can see and act across every device you own (lapt
 
 This document splits that idea into components, points out where the operating systems will push back, and suggests a build order.
 
-> **Current scope: Apple devices only** (macOS, iOS, iPadOS, watchOS). The cross-platform material below still describes the general design. See [APPLE_PLATFORM.md](APPLE_PLATFORM.md) for the Apple-specific, system-level breakdown.
+> **Current scope: Windows-first.** See the [README](../README.md) for the Windows integration plan and depth breakdown. [APPLE_PLATFORM.md](APPLE_PLATFORM.md) covers Macs, iPhones and iPads as secondary nodes.
 
 ---
 
