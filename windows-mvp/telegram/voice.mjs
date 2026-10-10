@@ -1,8 +1,10 @@
-import { createSpeech } from './photon.mjs';
+import { createSpeech, createTranscription } from './photon.mjs';
 
 // Stable HTTP contract for a voice implementation hosted from another repo.
 export function createVoice(env, fetchImpl = fetch) {
-  if (!env.VOICE_SERVICE_URL) return { synthesize: createSpeech(env, fetchImpl) };
+  if (!env.VOICE_SERVICE_URL) return {
+    synthesize: createSpeech(env, fetchImpl), transcribe: createTranscription(env, fetchImpl),
+  };
   const base = new URL(env.VOICE_SERVICE_URL);
   if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) {
     throw new Error('VOICE_SERVICE_URL must be an HTTP(S) base URL without credentials or query parameters.');

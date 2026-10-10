@@ -1,5 +1,7 @@
 # Voice service handoff
 
+Telegram now uses OpenAI directly for transcription and speech when
+`VOICE_SERVICE_URL` is unset. This contract is only needed for a custom service.
 The Telegram side is ready in `windows-mvp/telegram/voice.mjs`. Implement these
 two routes in the other repo, run the server, and set `VOICE_SERVICE_URL` on the
 Windows PC. The service can use OpenAI or any speech engine internally.

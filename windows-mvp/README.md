@@ -17,8 +17,8 @@ Control this PC from a private Telegram chat using Photon's Spectrum runtime.
 Replies are text plus optional OpenAI audio. Run `setup-telegram.bat`,
 configure your bot token and owner ID, then start `jarvis-telegram.bat`.
 See [TELEGRAM.md](TELEGRAM.md) for Photon credentials, bot creation, pairing and audio setup.
-A voice service from another repo can handle incoming voice notes and spoken replies;
-its interface is defined in [VOICE_API.md](VOICE_API.md).
+OpenAI directly transcribes incoming voice notes and generates spoken replies.
+An optional custom service can replace both through [VOICE_API.md](VOICE_API.md).
 
 ## Things to try
 

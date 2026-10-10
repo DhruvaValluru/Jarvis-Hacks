@@ -79,7 +79,7 @@ test('transcribed voice runs through the same Jarvis command and owner checks', 
 test('voice remains optional, bounded, and falls back to typed commands on errors', async () => {
   const disabled = harness();
   await disabled.inbox.receive({ id: '42' }, message({ type: 'voice', mimeType: 'audio/ogg' }));
-  assert.match(disabled.texts[0], /VOICE_SERVICE_URL/);
+  assert.match(disabled.texts[0], /OPENAI_API_KEY/);
   const failed = harness({ transcribe: async () => { throw new Error('private service details'); } });
   await failed.inbox.receive({ id: '42' }, message({ type: 'voice', mimeType: 'audio/ogg' }));
   await Promise.all(failed.inbox.voicePending);
@@ -114,7 +114,7 @@ test('voice service checks error status, transcripts, MIME type and upload size'
   await assert.rejects(bad.synthesize('Hello'), /MP3/);
   await assert.rejects(bad.transcribe(note), /text field/);
   await assert.rejects(bad.transcribe({ ...note, read: async () => Buffer.alloc(6_000_000) }), /too large/);
-  assert.deepEqual(createVoice({}), { synthesize: undefined });
+  assert.deepEqual(createVoice({}), { synthesize: undefined, transcribe: undefined });
 });
 test('Spectrum ids survive restart and are scoped to the project, bot and owner', () => {
   const dir = mkdtempSync(join(tmpdir(), 'jarvis-spectrum-'));

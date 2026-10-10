@@ -61,7 +61,7 @@ export class SpectrumInbox {
       return this.bridge.receive(update);
     }
     if (update.message.date * 1000 < this.bridge.now() - 120_000) return this.bridge.receive(update);
-    if (!this.transcribe) return this.bridge.sendText('Voice input will be available when VOICE_SERVICE_URL is configured. Send a typed command for now.');
+    if (!this.transcribe) return this.bridge.sendText('Set OPENAI_API_KEY and restart to enable voice input. Send a typed command for now.');
     if (this.voicePending.size >= 2) return this.bridge.sendText('Voice transcription is busy. Wait for a reply or send a typed command.');
     if (content.size > 5 * 1024 * 1024 || content.duration > 120) {
       return this.bridge.sendText('Keep voice notes under 5 MB and 2 minutes.');

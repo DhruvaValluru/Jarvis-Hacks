@@ -43,8 +43,12 @@ The dependency is already in the lockfile; you do not need to create another
 
 ## Voice now and from the other repo
 
-For outgoing OpenAI voice, set `OPENAI_API_KEY` locally and restart. Defaults:
-`OPENAI_TTS_MODEL=gpt-4o-mini-tts`, `OPENAI_TTS_VOICE=cedar`. The bridge generates
+For Telegram voice notes and spoken replies, set `OPENAI_API_KEY` locally and
+restart. No separate voice server or `jarvisvoice` branch is needed. Defaults:
+`OPENAI_TRANSCRIBE_MODEL=gpt-4o-mini-transcribe`,
+`OPENAI_TTS_MODEL=gpt-4o-mini-tts`, `OPENAI_TTS_VOICE=cedar`. Voice notes are
+transcribed directly by OpenAI, shown as `Heard: ...`, and sent to the same
+Windows command path as typed messages. The bridge generates
 MP3 and sends Spectrum `voice(...)` content. `/audio off` disables spoken replies
 for this run; `/audio on` enables them. Replies always include text. Speech is
 limited to the first 1,500 characters and OpenAI API billing applies.
@@ -58,9 +62,9 @@ VOICE_SERVICE_TOKEN=YOUR_SERVICE_TOKEN
 ```
 
 Restart the bridge after changing settings. With this URL configured, the
-service handles both speech and transcription, overriding the built-in OpenAI
-speech function. Without the URL, text and optional OpenAI spoken replies work;
-incoming voice notes ask the user to type instead.
+service handles both speech and transcription, overriding direct OpenAI voice.
+Leave `VOICE_SERVICE_URL` unset to use OpenAI directly. The browser voice app
+in `jarvisvoice` only has `/session` and is not a compatible custom service.
 
 Give your friend [VOICE_API.md](VOICE_API.md) for the exact HTTP contract. Their
 repo can run separately on the same PC or expose an accessible HTTPS service.
