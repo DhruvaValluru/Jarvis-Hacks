@@ -17,6 +17,13 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt pytest
-      - run: python -m pytest -q tests/test_core.py
+      - run: python -m pytest -q tests/test_core.py tests/test_telegram.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+        working-directory: windows-mvp/telegram
+      - run: npm test
+        working-directory: windows-mvp/telegram
       - run: python tests/smoke_windows.py
       - run: python -m jarvis --do "what time is it" --quiet
