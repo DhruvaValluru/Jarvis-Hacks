@@ -11,6 +11,15 @@ A voice assistant for one Windows 10/11 PC. It opens apps and works inside them 
 
 The first voice command downloads the speech model (about 150 MB). With no API key, the simple commands still work.
 
+## Telegram + OpenAI
+
+Control this PC from a private Telegram chat using Photon's Spectrum runtime.
+Replies are text plus optional OpenAI audio. Run `setup-telegram.bat`,
+configure your bot token and owner ID, then start `jarvis-telegram.bat`.
+See [TELEGRAM.md](TELEGRAM.md) for Photon credentials, bot creation, pairing and audio setup.
+OpenAI directly transcribes incoming voice notes and generates spoken replies.
+An optional custom service can replace both through [VOICE_API.md](VOICE_API.md).
+
 ## Things to try
 
 | Say or type | What happens |
