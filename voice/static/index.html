@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<title>Jarvis</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #151923;
+    --text: #e8ebf2;
+    --muted: #8a93a6;
+    --accent: #5b8cff;
+    --accent-2: #8f6bff;
+    --danger: #ff5b6e;
+    --you: #1f2533;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  }
+  header { width: 100%; max-width: 560px; display: flex; justify-content: space-between; align-items: center; }
+  h1 { font-size: 18px; font-weight: 600; letter-spacing: .5px; margin: 0; }
+  #status { color: var(--muted); font-size: 14px; }
+  main { flex: 1; width: 100%; max-width: 560px; display: flex; flex-direction: column; align-items: center; min-height: 0; }
+  .stage { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 36px 0 20px; }
+  #orb {
+    width: 168px; height: 168px; border-radius: 50%; border: 0; cursor: pointer;
+    background: radial-gradient(circle at 35% 30%, #9db8ff, var(--accent) 45%, var(--accent-2) 100%);
+    box-shadow: 0 0 0 0 rgba(91,140,255,.0), 0 12px 40px rgba(91,140,255,.25);
+    transform: scale(var(--level, 1));
+    transition: transform .08s linear, filter .3s, opacity .3s;
+    color: white; font-size: 17px; font-weight: 600;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #orb:focus-visible { outline: 3px solid #fff; outline-offset: 6px; }
+  body[data-state="idle"] #orb, body[data-state="ended"] #orb { filter: saturate(.7); }
+  body[data-state="connecting"] #orb { animation: breathe 1.2s ease-in-out infinite; }
+  body[data-state="thinking"] #orb { animation: breathe .8s ease-in-out infinite; }
+  @keyframes breathe { 50% { opacity: .55; } }
+  .controls { display: flex; gap: 12px; min-height: 40px; }
+  .controls button {
+    background: var(--panel); color: var(--text); border: 1px solid #262c3a;
+    border-radius: 999px; padding: 9px 18px; font-size: 15px; cursor: pointer;
+  }
+  .controls button[aria-pressed="true"] { background: var(--danger); border-color: var(--danger); }
+  .controls button[hidden] { display: none; }
+  #transcript {
+    width: 100%; flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+    padding: 4px 2px 12px;
+  }
+  .msg { max-width: 85%; padding: 10px 14px; border-radius: 16px; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.you { align-self: flex-end; background: var(--you); border-bottom-right-radius: 4px; }
+  .msg.jarvis { align-self: flex-start; background: var(--panel); border-bottom-left-radius: 4px; }
+  .note { align-self: center; color: var(--muted); font-size: 13px; text-align: center; }
+  .note.error { color: var(--danger); }
+</style>
+</head>
+<body data-state="idle">
+<header>
+  <h1>JARVIS</h1>
+  <span id="status" role="status">Tap the circle to talk</span>
+</header>
+<main>
+  <div class="stage">
+    <button id="orb" aria-label="Start talking">Talk</button>
+    <div class="controls">
+      <button id="mute" aria-pressed="false" hidden>Mute</button>
+    </div>
+  </div>
+  <div id="transcript" aria-live="polite"></div>
+</main>
+<audio id="remote-audio" autoplay playsinline></audio>
+
+<script>
+const orb = document.getElementById('orb');
+const muteBtn = document.getElementById('mute');
+const statusEl = document.getElementById('status');
+const transcriptEl = document.getElementById('transcript');
+const remoteAudio = document.getElementById('remote-audio');
+
+let pc = null, dc = null, micStream = null, audioCtx = null, meterFrame = 0;
+let current = { speaker: null, el: null };
+
+function setState(state, text) {
+  document.body.dataset.state = state;
+  statusEl.textContent = text;
+  const live = state === 'live' || state === 'thinking';
+  orb.textContent = state === 'connecting' ? '…' : live ? 'End' : 'Talk';
+  orb.setAttribute('aria-label', live ? 'End conversation' : 'Start talking');
+  muteBtn.hidden = !live;
+}
+
+function note(text, isError = false) {
+  const el = document.createElement('div');
+  el.className = 'note' + (isError ? ' error' : '');
+  el.textContent = text;
+  transcriptEl.appendChild(el);
+  current = { speaker: null, el: null };
+  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+}
+
+// Transcript arrives as fragments; start a new bubble whenever the speaker changes.
+function addText(speaker, delta) {
+  if (current.speaker !== speaker) {
+    const el = document.createElement('div');
+    el.className = 'msg ' + speaker;
+    transcriptEl.appendChild(el);
+    current = { speaker, el };
+  }
+  current.el.textContent += delta;
+  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+}
+
+function getPasscode() {
+  try { return localStorage.getItem('jarvis-passcode') || ''; } catch { return ''; }
+}
+function savePasscode(code) {
+  try { localStorage.setItem('jarvis-passcode', code); } catch {}
+}
+
+async function exchangeSdp(offerSdp) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch('/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/sdp', 'X-Jarvis-Passcode': getPasscode() },
+      body: offerSdp,
+    });
+    if (res.status === 401) {
+      const code = prompt('Passcode:');
+      if (code === null) throw new Error('Passcode needed.');
+      savePasscode(code);
+      continue;
+    }
+    if (!res.ok) throw new Error(await res.text());
+    return await res.text();
+  }
+  throw new Error('Wrong passcode.');
+}
+
+function handleEvent(event) {
+  switch (event.type) {
+    case 'session.started':
+      setState('live', 'Listening — just talk');
+      break;
+    case 'session.input_transcript.delta':
+      addText('you', event.delta);
+      break;
+    case 'session.output_transcript.delta':
+      if (document.body.dataset.state === 'thinking') setState('live', 'Listening — just talk');
+      addText('jarvis', event.delta);
+      break;
+    case 'session.delegation.created':
+      setState('thinking', 'Thinking…');
+      break;
+    case 'error':
+      note(event.error?.message || 'Something went wrong.', true);
+      break;
+    case 'session.closed':
+      cleanup(event.reason === 'expired' ? 'Session time limit reached' : 'Conversation ended');
+      break;
+  }
+}
+
+async function start() {
+  setState('connecting', 'Connecting…');
+  transcriptEl.textContent = '';
+  current = { speaker: null, el: null };
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+  } catch (err) {
+    setState('idle', 'Tap the circle to talk');
+    note('Microphone blocked. Allow mic access for this page and try again.', true);
+    return;
+  }
+
+  pc = new RTCPeerConnection();
+  pc.ontrack = (e) => {
+    remoteAudio.srcObject = e.streams[0];
+    remoteAudio.play().catch(() => {});
+    startMeter(e.streams[0]);
+  };
+  pc.onconnectionstatechange = () => {
+    if (pc && (pc.connectionState === 'failed' || pc.connectionState === 'disconnected')) {
+      cleanup('Connection lost');
+    }
+  };
+  for (const track of micStream.getAudioTracks()) pc.addTrack(track, micStream);
+
+  dc = pc.createDataChannel('oai-events');
+  dc.onmessage = (e) => {
+    try { handleEvent(JSON.parse(e.data)); } catch (err) { console.warn('Bad event', err); }
+  };
+
+  try {
+    await pc.setLocalDescription(await pc.createOffer());
+    const answer = await exchangeSdp(pc.localDescription.sdp);
+    await pc.setRemoteDescription({ type: 'answer', sdp: answer });
+  } catch (err) {
+    cleanup('Tap the circle to talk', 'idle');
+    note(err.message || String(err), true);
+  }
+}
+
+function stop() {
+  setState('connecting', 'Ending…');
+  try { if (dc && dc.readyState === 'open') dc.send(JSON.stringify({ type: 'session.close' })); } catch {}
+  // Give OpenAI a moment to close cleanly, then hang up regardless.
+  setTimeout(() => cleanup('Conversation ended'), 600);
+}
+
+function cleanup(message, state = 'ended') {
+  cancelAnimationFrame(meterFrame);
+  orb.style.removeProperty('--level');
+  if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
+  if (dc) { try { dc.close(); } catch {} dc = null; }
+  if (pc) { try { pc.close(); } catch {} pc = null; }
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  remoteAudio.srcObject = null;
+  muteBtn.setAttribute('aria-pressed', 'false');
+  muteBtn.textContent = 'Mute';
+  setState(state, message);
+}
+
+// Pulse the circle with whoever is talking. Purely cosmetic, so failures are ignored.
+function startMeter(remoteStream) {
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const analysers = [remoteStream, micStream].filter(Boolean).map((stream) => {
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      audioCtx.createMediaStreamSource(stream).connect(analyser);
+      return analyser;
+    });
+    const data = new Uint8Array(128);
+    const tick = () => {
+      let peak = 0;
+      for (const a of analysers) {
+        a.getByteTimeDomainData(data);
+        for (const v of data) peak = Math.max(peak, Math.abs(v - 128) / 128);
+      }
+      orb.style.setProperty('--level', (1 + Math.min(peak, 0.6) * 0.35).toFixed(3));
+      meterFrame = requestAnimationFrame(tick);
+    };
+    tick();
+  } catch {}
+}
+
+orb.addEventListener('click', () => {
+  const state = document.body.dataset.state;
+  if (state === 'idle' || state === 'ended') start();
+  else if (state === 'live' || state === 'thinking') stop();
+});
+
+muteBtn.addEventListener('click', () => {
+  if (!micStream) return;
+  const muted = muteBtn.getAttribute('aria-pressed') !== 'true';
+  micStream.getAudioTracks().forEach(t => { t.enabled = !muted; });
+  muteBtn.setAttribute('aria-pressed', String(muted));
+  muteBtn.textContent = muted ? 'Unmute' : 'Mute';
+  statusEl.textContent = muted ? 'Muted' : 'Listening — just talk';
+});
+
+if (!window.isSecureContext) {
+  note('The mic only works on http://localhost or an https:// address. See voice/README.md for using your phone.', true);
+}
+</script>
+</body>
+</html>
