@@ -1,11 +1,13 @@
 """Claude tool-use loop: turns a request into tool calls and a short spoken reply."""
 
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
 import anthropic
 
-from . import tools
+from . import remote, tools
 from .config import Config
 from .tools.apps import active_window
 
@@ -28,7 +30,13 @@ Safety rules:
 class Brain:
     def __init__(self, cfg: Config, confirm: Callable[[str], bool], status: Callable[[str], None] = print):
         self.cfg = cfg
-        self.confirm = confirm
+        lock = threading.Lock()  # parallel calls to different PCs must not ask at the same time
+
+        def confirm_one(reason: str) -> bool:
+            with lock:
+                return confirm(reason)
+
+        self.confirm = confirm_one
         self.status = status
         self.client = anthropic.Anthropic(api_key=cfg.api_key or None)
         self.messages: list = []
@@ -41,7 +49,7 @@ class Brain:
         kwargs = dict(
             model=self.cfg.model,
             max_tokens=16000,
-            system=SYSTEM,
+            system=SYSTEM + remote.prompt_note(),
             tools=tools.schemas(),
             messages=self.messages,
             output_config={"effort": self.cfg.effort},
@@ -96,14 +104,29 @@ class Brain:
                 return said or "Done."
             if said:
                 self.status(said)
-            results = []
-            for call in calls:
-                self.status(f"  -> {call.name} {call.input}")
-                ok, out = tools.run(call.name, dict(call.input), self.confirm)
-                results.append(_tool_result(call.id, ok, out))
-            self.messages.append({"role": "user", "content": results})
+            self.messages.append({"role": "user", "content": self._run_calls(calls)})
         self.reset()
         return "That took too many steps, so I stopped."
+
+    def _run_calls(self, calls: list) -> list[dict]:
+        """Run one step's tool calls: in order on each PC, and different PCs at the same time."""
+        by_pc: dict[str, list] = {}
+        for call in calls:
+            by_pc.setdefault(remote.device_of(call.name), []).append(call)
+
+        def run_group(group: list) -> None:
+            for call in group:
+                self.status(f"  -> {call.name} {call.input}")
+                ok, out = tools.run(call.name, dict(call.input), self.confirm)
+                done[call.id] = _tool_result(call.id, ok, out)
+
+        done: dict[str, dict] = {}
+        if len(by_pc) == 1:
+            run_group(calls)
+        else:
+            with ThreadPoolExecutor(len(by_pc)) as pool:
+                list(pool.map(run_group, by_pc.values()))
+        return [done[call.id] for call in calls]
 
 
 def _tool_result(tool_use_id: str, ok: bool, out) -> dict:

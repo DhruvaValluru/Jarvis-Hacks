@@ -23,6 +23,32 @@ The first voice command downloads the speech model (about 150 MB). With no API k
 | "Remind me in 10 minutes to stretch" | Timer that speaks when it's done |
 | "What's on my screen?" | Takes a screenshot and describes it (only when asked) |
 
+## Use several PCs
+
+One Jarvis can work on all your PCs: "open Spotify on the laptop", "copy build.zip from computer 2 to here and unzip it", "read the Excel numbers on the desktop and put them in Word on the laptop".
+
+1. Install [Tailscale](https://tailscale.com/download) on each PC and sign in with the same account. That puts the PCs on one private, encrypted network that works from anywhere. A home Wi-Fi network works too, but Tailscale also works when the PCs are on different networks.
+2. On the PC you **don't** talk to (computer 2), run `jarvis.bat --serve`. It prints two lines, for example:
+   ```
+   JARVIS_DEVICES=laptop=100.64.0.2:8765
+   JARVIS_TOKEN=Xy3...
+   ```
+   Click **Allow** if Windows Firewall asks.
+3. On the PC you talk to (computer 1), paste those two lines into `windows-mvp\.env` and run `jarvis.bat`. It says `Connected to laptop (... tools)`.
+
+For both directions, set `JARVIS_SERVE=1` on each PC, list the other PC in `JARVIS_DEVICES`, and use the same `JARVIS_TOKEN` on both.
+
+| Say | What happens |
+|---|---|
+| "Open Spotify on the laptop" / "tell computer 2 to pause" | Instant, no AI call: the fast path runs the tool on that PC. Jarvis adds under 1 ms on top of the network time |
+| "What's on the laptop's screen?" | Screenshot from the laptop, described here |
+| "Copy report.docx from the laptop to my Downloads and open it" | `copy_file`, then `open_app` here |
+| "Write a Python script on computer 2 that prints the date, copy it here and run it" | Claude chains PCs: it writes the file on one, moves it, runs it on the other |
+
+**Speed:** each PC keeps one open connection (no reconnect per call), tool lists are fetched once at startup, and calls to different PCs in the same step run at the same time.
+
+**Safety:** every request needs the shared token. Actions that need approval are confirmed on the PC you're talking to. The serving PC refuses them unless the caller says you approved. Don't expose the port to the internet; use Tailscale or your home network. Each PC logs what it ran in its own audit log.
+
 ## Modes
 
 ```
@@ -30,6 +56,7 @@ jarvis.bat            press Enter to talk, or type
 jarvis.bat --wake     hands-free: say "Jarvis, ..." any time
 jarvis.bat --text     typing only
 jarvis.bat --do "open notepad"
+jarvis.bat --serve    let your other PCs use this one
 jarvis.bat --list-tools
 ```
 
@@ -51,7 +78,7 @@ tools: open/close/focus apps, UI Automation (list/click/set/read), Excel/Word CO
        media keys, volume, clipboard, web, timers, screenshot, PowerShell (asks first)
 ```
 
-Code: `jarvis/router.py` (instant commands), `jarvis/brain.py` (Claude loop), `jarvis/tools/` (one file per area), `jarvis/voice.py`.
+Code: `jarvis/router.py` (instant commands), `jarvis/brain.py` (Claude loop), `jarvis/tools/` (one file per area), `jarvis/remote.py` (other PCs), `jarvis/voice.py`.
 
 ## Limits
 
@@ -60,4 +87,4 @@ Code: `jarvis/router.py` (instant commands), `jarvis/brain.py` (Claude loop), `j
 - Excel and Word tools need Office installed and the file already open.
 - Voice uses a simple loudness detector, so a quiet room works best.
 
-Next phases (service, cross-PC mesh, phone client) are in the [main README](../README.md#8-build-phases).
+Next phases (service, pairing by QR code, phone client) are in the [main README](../README.md#8-build-phases).

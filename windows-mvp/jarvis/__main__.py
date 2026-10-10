@@ -4,14 +4,18 @@
   python -m jarvis --text       typing only, no microphone
   python -m jarvis --wake       hands-free: say "Jarvis, ..." any time
   python -m jarvis --do "open notepad"   run one command and exit
+  python -m jarvis --serve       let other PCs use this PC's tools (prints pairing info)
   python -m jarvis --list-tools
+
+Multi-PC: set JARVIS_DEVICES and JARVIS_TOKEN in .env (see jarvis/remote.py), then
+"open spotify on the laptop" or "copy report.docx from the laptop to here and open it".
 """
 
 import argparse
 import re
 import sys
 
-from . import config, router, tools
+from . import config, remote, router, tools
 from .tools import registry
 
 
@@ -53,7 +57,11 @@ class Jarvis:
                 self.brain.reset()
             self.reply("Okay, fresh start.")
             return
-        fast = router.route(text)
+        pc, rest = remote.split_target(router.clean(text)) if remote.DEVICES else (None, text)
+        fast = router.route(rest)
+        if fast and pc and pc != remote.here:
+            name = f"{pc}{remote.SEP}{fast[0]}"
+            fast = (name, fast[1]) if name in tools.TOOLS else None  # offline: let Claude explain
         if fast:
             name, args = fast
             ok, out = tools.run(name, args, self.confirm)
@@ -73,15 +81,30 @@ def main() -> None:
     p.add_argument("--wake", action="store_true", help='hands-free: listens for "Jarvis"')
     p.add_argument("--do", metavar="COMMAND", help="run one command and exit")
     p.add_argument("--quiet", action="store_true", help="don't speak replies")
+    p.add_argument("--serve", action="store_true", help="only serve this PC's tools to other PCs")
     p.add_argument("--list-tools", action="store_true")
     args = p.parse_args()
 
     if args.list_tools:
         for t in tools.TOOLS.values():
+            if t.hidden:
+                continue
             print(f"{t.name:18} [{t.risk:7}] {t.description.splitlines()[0][:90]}")
         return
 
     cfg = config.load()
+    if args.serve:
+        print("=" * 60)
+        print(" JARVIS - serving this PC to your other PCs. Ctrl+C to stop.")
+        print("=" * 60)
+        try:
+            remote.serve(cfg)
+        except KeyboardInterrupt:
+            print("\nBye.")
+        return
+    if cfg.serve:
+        remote.serve(cfg, log=lambda s: print(f" {s}"), background=True)
+    remote.connect(cfg, log=lambda s: print(f" {s}"))
     from .voice import Speaker
 
     speaker = Speaker(enabled=cfg.speak and not args.quiet)

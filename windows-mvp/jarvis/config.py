@@ -1,7 +1,9 @@
 """Settings, read from environment variables and an optional .env file."""
 
 import os
-from dataclasses import dataclass
+import re
+import socket
+from dataclasses import dataclass, field
 from pathlib import Path
 
 MVP_DIR = Path(__file__).resolve().parent.parent
@@ -37,6 +39,13 @@ class Config:
     speak: bool
     fallbacks: bool
     max_steps: int
+    # Multi-PC (see jarvis/remote.py)
+    name: str = "this-pc"
+    devices: dict = field(default_factory=dict)  # {"laptop": "100.64.0.2:8765"}
+    token: str = ""
+    serve: bool = False
+    serve_host: str = "0.0.0.0"
+    port: int = 8765
 
     @property
     def has_llm(self) -> bool:
@@ -53,4 +62,25 @@ def load() -> Config:
         speak=os.environ.get("JARVIS_SPEAK", "1") != "0",
         fallbacks=os.environ.get("JARVIS_FALLBACKS", "1") != "0",
         max_steps=int(os.environ.get("JARVIS_MAX_STEPS", "12")),
+        name=_pc_name(os.environ.get("JARVIS_NAME") or socket.gethostname()),
+        devices=parse_devices(os.environ.get("JARVIS_DEVICES", "")),
+        token=os.environ.get("JARVIS_TOKEN", ""),
+        serve=os.environ.get("JARVIS_SERVE", "0") == "1",
+        serve_host=os.environ.get("JARVIS_SERVE_HOST", "0.0.0.0"),
+        port=int(os.environ.get("JARVIS_PORT", "8765")),
     )
+
+
+def _pc_name(name: str) -> str:
+    return re.sub(r"[^a-z0-9-]+", "-", name.strip().lower()).strip("-")[:30] or "pc"
+
+
+def parse_devices(text: str) -> dict:
+    """'laptop=100.64.0.2, desktop=desktop:8765' -> {'laptop': '100.64.0.2', 'desktop': 'desktop:8765'}"""
+    out = {}
+    for item in re.split(r"[,;\n]+", text.strip()):
+        if "=" in item:
+            name, address = item.split("=", 1)
+            if name.strip() and address.strip():
+                out[_pc_name(name)] = address.strip()
+    return out

@@ -36,6 +36,8 @@ class Tool:
     risk: str = "act"
     # Optional per-call check: returns a reason string when this call needs confirmation.
     confirm_if: Callable[[dict], str | None] | None = None
+    hidden: bool = False  # callable by name (e.g. from another PC) but not shown to Claude
+    remote: bool = False  # proxy for a tool on another PC; func(args, confirm)
 
     def schema(self) -> dict:
         return {
@@ -62,16 +64,16 @@ TOOLS: dict[str, Tool] = {}
 announce: Callable[[str], None] = print
 
 
-def tool(name: str, description: str, params: dict | None = None, required=(), risk="act", confirm_if=None):
+def tool(name: str, description: str, params: dict | None = None, required=(), risk="act", confirm_if=None, hidden=False):
     def deco(fn):
-        TOOLS[name] = Tool(name, description, fn, params or {}, tuple(required), risk, confirm_if)
+        TOOLS[name] = Tool(name, description, fn, params or {}, tuple(required), risk, confirm_if, hidden)
         return fn
 
     return deco
 
 
 def schemas() -> list[dict]:
-    return [t.schema() for t in TOOLS.values()]
+    return [t.schema() for t in TOOLS.values() if not t.hidden]
 
 
 def _short(args: dict, limit: int = 300) -> str:
@@ -104,7 +106,7 @@ def run(name: str, args: dict, confirm: Callable[[str], bool] | None = None) -> 
         audit(name, args, False, "declined by user")
         return False, "The user declined this action. Do not retry it; ask what they want instead."
     try:
-        result = t.func(**args)
+        result = t.func(args, confirm) if t.remote else t.func(**args)
         ok = True
     except ToolError as e:
         ok, result = False, str(e)
