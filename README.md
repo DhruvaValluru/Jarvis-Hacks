@@ -1,10 +1,8 @@
 <p align="center"><img src="docs/alfred-logo.png" alt="Alfred AI: every device, one butler." width="560"></p>
 
-# Jarvis-Hacks
+# Alfred
 
-An Iron Man–style "Jarvis": a voice-controlled assistant that sees and acts across all of your devices.
-
-The assistant is named **Alfred** (the code still uses the working name `jarvis`).
+A voice and remote control assistant that sees and acts across all your devices.
 
 **Primary target: Windows ↔ Windows.** It gives the deepest system access with the fewest gatekeepers. Macs, iPhones and iPads join later as secondary nodes.
 
