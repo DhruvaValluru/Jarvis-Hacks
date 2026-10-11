@@ -11,6 +11,9 @@
 Keys go straight to the secret store (Windows Credential Manager) and are never sent back, only
 Store.secret_hint. Changing a setting restarts what reads it, as the Settings page does.
 
+With the stand-in engine (--fake-core) the setup keeps its progress in fake-onboarding.json and
+"Start Alfred when I sign in" only pretends, so trying the setup there never changes the real Alfred.
+
 The voice test runs through the service when it has voice_test(mic) -> {"heard", "reply"} (listen
 once, run what was heard, return the reply); without it the setup says so and moves on.
 """
@@ -53,14 +56,15 @@ class Onboarding:
                  anthropic_client=None):
         from ..service.fake import FakeService
 
+        fake = isinstance(service, FakeService)  # the stand-in engine (--fake-core): runs anywhere, changes nothing
         self.service, self.store, self.shell = service, store, shell
-        self.state = state or SetupState()
-        self.autostart = autostart or system.Autostart()
+        self.state = state or SetupState(name="fake-onboarding.json" if fake else "onboarding.json")
+        self.autostart = autostart or system.Autostart(system.PretendRunKey() if fake else None)
         self.downloads = downloads or speech.ModelDownload()
         self.anthropic_client = anthropic_client  # client_factory(key) for tests; None: the Anthropic SDK
         self.link = TelegramLink(service, store, on_linked=lambda _owner: self.state.mark("telegram", DONE))
         self.legacy_files = list(dict.fromkeys([config.MVP_DIR / ".env", config.app_dir() / ".env"]))
-        self.any_os = isinstance(service, FakeService)  # the stand-in engine runs anywhere
+        self.any_os = fake
         self.bot: dict = {}  # the bot the last token check found: username, name, link
 
     def add_routes(self, router) -> None:
@@ -204,29 +208,41 @@ class Onboarding:
         return Response.json({"keys": _listing(_with_file(_env_text(req.json().get("text")), config.read_env_file))})
 
     def legacy_import(self, req: Request) -> Response:
+        """Alfred's keys go to the secret store and plain settings to settings.env. Other names that look
+        secret (HF_TOKEN, SOME_PASSWORD) are left out: settings.env is plain text the Settings page shows."""
         text = req.json().get("text")
+        if text is None:
+            path = self.legacy_file()
+            if path is None:
+                raise HTTPError(404, "Alfred didn't find old settings next to it. Choose the file instead.")
+            values = config.read_env_file(path)
+        else:
+            values = _with_file(_env_text(text), config.read_env_file)
+        imported, left_out = [], []
         try:
-            if text is None:
-                path = self.legacy_file()
-                if path is None:
-                    raise HTTPError(404, "Alfred didn't find old settings next to it. Choose the file instead.")
-                imported = self.store.import_legacy_env(path)
-            else:
-                imported = _with_file(_env_text(text), self.store.import_legacy_env)
-        except ValueError as e:
+            for key, value in values.items():
+                if not ENV_KEY.fullmatch(key):
+                    continue
+                if not _importable(key):
+                    left_out.append(key)
+                    continue
+                self.store.set(key, value)
+                imported.append(key)
+        except ValueError as e:  # e.g. a key too long for Credential Manager
             raise HTTPError(400, str(e)) from e
         if not imported:
-            raise HTTPError(400, "That file has no settings in it.")
+            raise HTTPError(400, "That file has no settings Alfred can import.")
         self.state.mark("import", DONE)
         restarting = self._apply(set(imported))
-        return Response.json({"imported": imported, "restarting": restarting, "state": self.view()})
+        return Response.json({"imported": imported, "left_out": left_out, "restarting": restarting,
+                              "state": self.view()})
 
     # --- keys -------------------------------------------------------------------
     def anthropic(self, req: Request) -> Response:
         body = req.json()
         key = body.get("key")
         check = validators.check_anthropic(key, self.anthropic_client)
-        unchecked = body.get("save_anyway") is True and check.result in ("offline", "error")
+        unchecked = body.get("save_anyway") is True and check.result in validators.MAY_SAVE_UNCHECKED
         if not (check.ok or unchecked):
             return _failed(check)
         self._save_secret("ANTHROPIC_API_KEY", validators.clean(key))
@@ -444,13 +460,22 @@ def _with_file(text: str, fn):
         Path(name).unlink(missing_ok=True)
 
 
+def _importable(key: str) -> bool:
+    """Alfred's own keys (to the secret store) and plain settings; not other names that look secret."""
+    return settings.is_secret(key) or not SECRET_LOOKING.search(key)
+
+
 def _listing(values: dict) -> list[dict]:
-    """Old settings to show before importing them: names, plain values, and only hints of secrets."""
+    """Old settings to show before importing them: names, plain values, and only hints of Alfred's keys.
+    Other secret-looking names show neither their value nor a hint, and aren't imported."""
     out = []
     for key, value in values.items():
         if not ENV_KEY.fullmatch(key):
             continue
-        hidden = settings.is_secret(key) or bool(SECRET_LOOKING.search(key))
-        shown = (settings.hint(value) if settings.is_secret(key) else "(hidden)") if hidden else value[:80]
-        out.append({"name": key, "secret": hidden, "value": shown})
+        if settings.is_secret(key):
+            out.append({"name": key, "secret": True, "value": settings.hint(value), "import": True})
+        elif _importable(key):
+            out.append({"name": key, "secret": False, "value": value[:80], "import": True})
+        else:
+            out.append({"name": key, "secret": True, "value": "(hidden, not imported)", "import": False})
     return out

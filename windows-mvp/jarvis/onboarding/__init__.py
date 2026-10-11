@@ -12,8 +12,9 @@ Steps, in order; each can be revisited later from Settings:
   pcs        pairing code for the user's other PCs, this PC's name, sharing it (optional)
   finish     start Alfred at sign-in (off by default), try a command, done
 
-Progress is kept in data_dir()/onboarding.json (state.py); until the setup is finished the app opens it
-first. Windows-only and optional modules are imported only when a step uses them.
+Progress is kept in data_dir()/onboarding.json (state.py; fake-onboarding.json with --fake-core); until
+the setup is finished the app opens it first. Windows-only and optional modules are imported only when
+a step uses them.
 """
 
 from .state import STEPS

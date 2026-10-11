@@ -23,7 +23,7 @@ Options:
 |---|---|
 | `python -m jarvis.app` | The app. |
 | `python -m jarvis.app --no-window` | Use your default browser instead of Alfred's window. The console prints a link that works once, in case the browser doesn't open. |
-| `python -m jarvis.app --fake-core` | A scripted stand-in for the engine: no Claude, no API key, nothing happens on the PC. For working on the UI (any OS). It keeps its own settings (`fake-settings.env`, keys only in memory) and never touches your real ones. Try `send ...` (asks for approval), `long ...` (busy until Stop), `timer`, `fail`. |
+| `python -m jarvis.app --fake-core` | A scripted stand-in for the engine: no Claude, no API key, nothing happens on the PC. For working on the UI (any OS). It keeps its own settings (`fake-settings.env`, keys only in memory) and its own setup progress (`fake-onboarding.json`); its "Start Alfred when I sign in" only pretends. It never touches your real ones. Try `send ...` (asks for approval), `long ...` (busy until Stop), `timer`, `fail`. |
 | `python -m jarvis.app --port 8770` | A fixed port. By default Alfred picks a free one. |
 
 Running it again while it's open just brings the open Alfred to the front.
@@ -32,16 +32,18 @@ Running it again while it's open just brings the open Alfred to the front.
 
 The first time, Alfred opens its setup instead of Home, and keeps opening it (where you left off) until you press **Done** on the last step. Optional steps have **Skip**; once the required ones are done, **Skip the rest** jumps to the end. Every step can be opened again later from **Settings → Setup**.
 
+An Alfred from before the setup existed (run from source) goes through it once too, on purpose: the notice it already accepted shows as accepted, step 3 imports its old `windows-mvp\.env` (the installed app won't read that file), and the Safety step shows the new ways to stop Alfred. Everything else can be skipped.
+
 | Step | What happens |
 |---|---|
 | 1. Welcome | What Alfred is, and a quick look at this PC: Windows version, microphone, Office, Tailscale. Only an unsupported Windows (older than Windows 10 1809) stops the setup; the rest is information. |
 | 2. Your data | The data notice ([PRIVACY.md](PRIVACY.md)). **I agree** records it and starts Alfred. Required. |
-| 3. Old settings | Only when an old `windows-mvp\.env` is next to Alfred, or you pick one (Claude step: "Bring your old settings"). Lists the names, with keys shown only by their last characters, and imports them (keys to Credential Manager). The old file isn't changed. |
+| 3. Old settings | Only when an old `windows-mvp\.env` is next to Alfred, or you pick one (Claude step: "Bring your old settings"). Lists the names, with Alfred's keys shown only by their last characters, and imports them (keys to Credential Manager). Other names that look secret (`HF_TOKEN`, `..._PASSWORD`) are hidden and left out, because plain settings are stored as text. The old file isn't changed. |
 | 4. Claude | Paste your Anthropic API key. Alfred checks it with a free call (list one model): rejected key, key without permission and no internet each get their own message. Skip it and Alfred only understands simple commands. |
 | 5. Safety | Computer use on or off (on by default: Alfred may use the mouse and keyboard, and screenshots go to Anthropic while it does), and every way to stop Alfred: STOP, the tray icon, Ctrl+Alt+Backspace, /stop in Telegram. |
 | 6. Voice | Pick a microphone, download the local speech model (faster-whisper `base.en`, about 145 MB, into `%LOCALAPPDATA%\Jarvis\models`, with progress and Cancel), and try "what time is it" once Alfred's engine can listen (until then the setup says so). |
 | 7. OpenAI | Optional key for Telegram voice notes and spoken replies, checked with a free call. |
-| 8. Telegram | The bot token (checked with Telegram: you see your bot's @name and link), the Photon Spectrum secret, then **Show a code**: send the 6-digit code to your bot from your own Telegram account and that account becomes the owner. Messages from anyone else are ignored; the code works once, for 10 minutes, and five wrong codes end it. |
+| 8. Telegram | The bot token (checked with Telegram: you see your bot's @name and link), the Photon Spectrum secret, then **Show a code**: send the 6-digit code to your bot from your own Telegram account and that account becomes the owner. Messages from anyone else are ignored; the code works once, for 10 minutes, and five wrong codes end it. While the code is on screen the bot runs without an owner, but nothing is saved until the code arrives: cancelling, expiry, or Alfred closing leave your previous owner, and Telegram goes back to how it was. |
 | 9. Other PCs | **Make a pairing code** on your first PC (shown once, with Copy) or paste it on the others (**Join**); this PC's name; **Let my other PCs use this one** (off by default; Windows Firewall may ask, allow private networks only). |
 | 10. Finish | **Start Alfred when I sign in** (off by default; Settings shows it and turns it off again), **Try it** sends "open notepad" and shows the reply, **Done** opens Home. |
 
@@ -52,7 +54,7 @@ The first time, Alfred opens its setup instead of Home, and keeps opening it (wh
 - **STOP** is always on screen. It kills whatever Alfred is doing on the PC (a PowerShell command, computer use, a half-finished action), lets go of the mouse and keyboard, and starts a fresh engine.
 - **Approvals**: before Alfred sends, deletes, buys or posts, or another of your PCs wants to act on this one, a dialog shows what it wants to do and where the request came from (this window, Telegram, voice, another PC). Allow or Deny; no answer within the countdown means no. Whoever answers first (the window or Telegram) wins.
 - **Data notice**: the first time, the window shows the full notice ([PRIVACY.md](PRIVACY.md)). Alfred doesn't start until you press **I agree**.
-- **Settings**: model, effort, computer use, spoken replies, this PC's name; API keys; Telegram on/off and its owner. When Telegram is waiting for an owner and someone messages the bot, Home shows their Telegram ID with a button to make them the owner. Saving restarts Alfred's engine after what it's doing now. **Setup** opens any step of the first-run setup again and turns "Start Alfred when I sign in" on or off.
+- **Settings**: model, effort, computer use, spoken replies, this PC's name; API keys; Telegram on/off and its owner. When Telegram is waiting for an owner and someone messages the bot, Home says so (once) and points to **Settings → Setup → Telegram**, which links your own account with a code; nobody becomes the owner just by messaging the bot. Saving restarts Alfred's engine after what it's doing now. **Setup** opens any step of the first-run setup again and turns "Start Alfred when I sign in" on or off.
 - **Activity**: every action Alfred took on this PC, newest first, with a filter.
 
 ## Tray icon, closing and quitting

@@ -12,6 +12,7 @@ from pathlib import Path
 from .. import config
 
 MIN_BUILD = 17763  # Windows 10 version 1809; Alfred is tested on Windows 11 and Server 2025
+SERVER_YEARS = {14393: "2016", 17763: "2019", 20348: "2022", 26100: "2025"}  # Windows Server's builds
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE = "Alfred"
 
@@ -29,6 +30,8 @@ def windows() -> dict:
         edition = platform.win32_edition() or ""
     except Exception:  # noqa: BLE001
         edition = ""
+    if edition.startswith("Server"):  # ServerDatacenter, ServerStandard, ...: not a Windows 10 or 11
+        name, edition = f"Windows Server {SERVER_YEARS.get(build, '')}".strip(), ""
     edition = {"Professional": "Pro", "Core": "Home"}.get(edition, edition)
     text = f"{name} {edition}".strip() + (f" (build {build})" if build else "")
     return {"windows": True, "supported": build >= MIN_BUILD, "text": text}
@@ -132,6 +135,24 @@ class RunKey:
             pass
 
 
+class PretendRunKey:
+    """The stand-in engine's startup list (--fake-core): kept in memory, Windows' own list is never touched."""
+
+    simulated = True
+
+    def __init__(self):
+        self.values: dict[str, str] = {}
+
+    def get(self, name: str) -> str | None:
+        return self.values.get(name)
+
+    def set(self, name: str, value: str) -> None:
+        self.values[name] = value
+
+    def delete(self, name: str) -> None:
+        self.values.pop(name, None)
+
+
 def launch_command() -> str:
     """How Windows starts Alfred at sign-in: the installed app, or this Python with the source folder."""
     if config.frozen():
@@ -147,7 +168,7 @@ class Autostart:
     """Start Alfred when the user signs in. Off unless they turn it on; Alfred opens its window as usual."""
 
     def __init__(self, key=None):
-        self.key = key  # tests pass a fake RunKey
+        self.key = key  # tests pass a fake RunKey; --fake-core a PretendRunKey
 
     @property
     def supported(self) -> bool:
@@ -161,11 +182,13 @@ class Autostart:
     def status(self) -> dict:
         if not self.supported:
             return {"supported": False, "enabled": False, "command": ""}
+        key = self._key()
         try:
-            value = self._key().get(RUN_VALUE)
+            value = key.get(RUN_VALUE)
         except Exception:  # noqa: BLE001 - shown as off
             value = None
-        return {"supported": True, "enabled": bool(value), "command": value or launch_command(), "where": f"HKCU\\{RUN_KEY}"}
+        return {"supported": True, "enabled": bool(value), "command": value or launch_command(),
+                "where": f"HKCU\\{RUN_KEY}", "simulated": getattr(key, "simulated", False) is True}
 
     def set(self, on: bool) -> dict:
         if not self.supported:

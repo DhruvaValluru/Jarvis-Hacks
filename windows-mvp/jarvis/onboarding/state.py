@@ -4,7 +4,8 @@
 
 A step is "done" or "skipped"; a step that isn't listed hasn't been answered yet. completed_at is set
 when the user presses Done on the last step; until then the app opens the setup again (resuming at
-the first unanswered step). Every step can be revisited later from Settings.
+the first unanswered step). Every step can be revisited later from Settings. The stand-in engine
+(--fake-core) keeps its own fake-onboarding.json, so trying the setup there never finishes the real one.
 """
 
 import json
@@ -29,13 +30,14 @@ TITLES = {
 class SetupState:
     """Reads and writes onboarding.json. The file is replaced atomically, so a crash never leaves half of it."""
 
-    def __init__(self, path=None):
+    def __init__(self, path=None, *, name: str = "onboarding.json"):
         self._path = Path(path) if path else None
+        self.name = name  # in data_dir(), when no path is given
         self._lock = threading.Lock()
 
     @property
     def path(self) -> Path:
-        return self._path or config.data_dir() / "onboarding.json"
+        return self._path or config.data_dir() / self.name
 
     def exists(self) -> bool:
         return self.path.is_file()

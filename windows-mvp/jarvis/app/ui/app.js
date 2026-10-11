@@ -49,6 +49,8 @@
   let settings = null;
   let telegramState = "off";
   const replied = new Set();
+  const openedAt = Date.now();
+  let ownerHinted = false;
 
   // --- server -----------------------------------------------------------------
   async function api(method, path, body) {
@@ -174,8 +176,12 @@
         setTelegram(event.state, event.error);
         if (event.error) line(event.error, "error");
         break;
-      case "telegram_user":
-        offerOwner(event.id);
+      case "telegram_user":  // messaging the bot never makes anyone its owner; the setup's code does
+        if (!ownerHinted && event.ts * 1000 > openedAt) {  // once, and not for events from before this page
+          ownerHinted = true;
+          line("Someone messaged your Telegram bot, which has no owner yet, so Alfred ignored it. To link your own "
+            + "Telegram account, open Settings → Setup → Telegram.");
+        }
         break;
       case "approval":
         line(`Alfred asked: ${event.reason}`);
@@ -585,21 +591,6 @@
     } catch (e) {
       $("telegram-state").textContent = e.message;
     }
-  }
-
-  function offerOwner(id) {
-    if (!id) return;
-    const item = line(`Someone on Telegram (ID ${id}) messaged your bot. If that was you, make that account Alfred's owner.`);
-    const button = el("button", null, "Make this the owner");
-    button.type = "button";
-    button.onclick = async () => {
-      button.disabled = true;
-      const note = el("span", "msg");
-      item.append(note);
-      if (await putSettings({ TELEGRAM_OWNER_ID: String(id) }, note)) note.textContent = " Saved. Telegram restarts with that owner.";
-      else button.disabled = false;
-    };
-    item.querySelector(".text").append(button);
   }
 
   // --- activity ---------------------------------------------------------------

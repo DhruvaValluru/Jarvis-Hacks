@@ -123,6 +123,7 @@ body { margin: 0; min-height: 100vh; }
 .kv tr:last-child td { border-bottom: 0; }
 .kv td.key, .kv td.secret { font-family: var(--aero-font-mono); word-break: break-all; }
 .kv td.secret { color: var(--aero-text-muted); }
+.kv tr.left-out td.key { color: var(--aero-text-muted); text-decoration: line-through; }
 
 /* --- Telegram ---------------------------------------------------------------------------------------- */
 .part { margin: 18px 0 8px; padding-top: 6px; border-top: 1px solid var(--aero-glass-edge); }

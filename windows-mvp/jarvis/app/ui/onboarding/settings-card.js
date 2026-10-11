@@ -44,9 +44,9 @@
     const box = $("setup-autostart");
     box.checked = autostart.enabled;
     box.disabled = !autostart.supported;
-    $("setup-autostart-help").textContent = autostart.supported
-      ? `Alfred adds itself to Windows’ startup apps (${autostart.where}). Turn this off to remove it.`
-      : "Only on Windows.";
+    $("setup-autostart-help").textContent = !autostart.supported ? "Only on Windows."
+      : autostart.simulated ? "The stand-in engine (--fake-core) only pretends: Windows’ startup apps don’t change."
+        : `Alfred adds itself to Windows’ startup apps (${autostart.where}). Turn this off to remove it.`;
     card.hidden = false;
   }
 

@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import urllib.error
 from pathlib import Path
@@ -117,7 +118,8 @@ def test_steps_in_order_skip_and_resume(env):
     assert again.state()["current"] == "finish"
     status, state = again.step("finish")
     assert status == 200 and state["complete"] is True and re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d", state["completed_at"])
-    saved = json.loads((env / "Jarvis" / "onboarding.json").read_text(encoding="utf-8"))
+    assert again.wizard.state.path == env / "Jarvis" / "fake-onboarding.json"  # the stand-in engine's own file
+    saved = json.loads(again.wizard.state.path.read_text(encoding="utf-8"))
     assert saved["version"] == 1 and saved["completed_at"] == state["completed_at"]
     assert saved["steps"] == {"welcome": "done", "consent": "done", "anthropic": "skipped", "safety": "done",
                               "speech": "skipped", "openai": "skipped", "telegram": "skipped", "pcs": "skipped",
@@ -196,6 +198,21 @@ def test_welcome_blocks_only_an_unsupported_windows(env, monkeypatch):
     assert call(router, "POST", "/api/onboarding/step", {"step": "welcome", "status": "done"})[0] == 200
 
 
+def test_windows_names(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+    for build, edition, text in [
+        (26100, "ServerDatacenter", "Windows Server 2025 (build 26100)"),  # the CI image
+        (20348, "ServerStandard", "Windows Server 2022 (build 20348)"),
+        (17763, "ServerStandardEvaluation", "Windows Server 2019 (build 17763)"),
+        (25398, "ServerDatacenter", "Windows Server (build 25398)"),  # a build without a well-known year
+        (26100, "Professional", "Windows 11 Pro (build 26100)"),
+        (19045, "Core", "Windows 10 Home (build 19045)"),
+    ]:
+        monkeypatch.setattr(sys, "getwindowsversion", lambda b=build: SimpleNamespace(build=b), raising=False)
+        monkeypatch.setattr(system.platform, "win32_edition", lambda e=edition: e, raising=False)
+        assert system.windows() == {"windows": True, "supported": True, "text": text}
+
+
 # --- keys --------------------------------------------------------------------------------------
 def _client(error=None, seen=None):
     """A stand-in for anthropic.Anthropic(api_key=...): models.list(limit=1) raises error or answers."""
@@ -227,8 +244,11 @@ def test_anthropic_errors_are_mapped(env):
         (anthropic.PermissionDeniedError("no", response=response(403), body=None), "forbidden", "lacks permission"),
         (anthropic.APIConnectionError(request=request), "offline", "Can't reach Anthropic"),
         (anthropic.APITimeoutError(request=request), "offline", "check your internet"),
-        (anthropic.InternalServerError("oops", response=response(500), body=None), "error", "error 500"),
+        (anthropic.InternalServerError("oops", response=response(500), body=None), "unavailable", "error 500"),
+        (anthropic.RateLimitError("slow down", response=response(429), body=None), "unavailable", "limiting"),
         (ValueError("odd"), "error", "ValueError"),
+        (ModuleNotFoundError("No module named 'anthropic'"), "error", "ModuleNotFoundError"),
+        (anthropic.NotFoundError("no", response=response(404), body=None), "error", "NotFoundError"),
     ]
     for error, result, words in cases:
         check = validators.check_anthropic(ANTHROPIC_KEY, _client(error))
@@ -243,6 +263,16 @@ def test_anthropic_errors_are_mapped(env):
     assert setup.call("POST", "anthropic", {"key": ANTHROPIC_KEY, "save_anyway": True})[0] == 422  # never a rejected key
     assert not setup.store.has_secret("ANTHROPIC_API_KEY")
 
+    for odd, _, _ in cases[6:]:  # anything unexpected: never saved unchecked
+        setup.wizard.anthropic_client = _client(odd)
+        status, body = setup.call("POST", "anthropic", {"key": ANTHROPIC_KEY, "save_anyway": True})
+        assert status == 422 and body["result"] == "error", odd
+    assert not setup.store.has_secret("ANTHROPIC_API_KEY")
+
+    setup.wizard.anthropic_client = _client(cases[5][0])  # Anthropic busy (429): may be saved without checking
+    status, body = setup.call("POST", "anthropic", {"key": ANTHROPIC_KEY, "save_anyway": True})
+    assert status == 200 and body["saved"] is True and setup.store.has_secret("ANTHROPIC_API_KEY")
+    setup.store.delete_secret("ANTHROPIC_API_KEY")
     setup.wizard.anthropic_client = _client(cases[2][0])  # offline: may be saved without checking
     status, body = setup.call("POST", "anthropic", {"key": ANTHROPIC_KEY, "save_anyway": True})
     assert status == 200 and body["saved"] is True and setup.store.has_secret("ANTHROPIC_API_KEY")
@@ -271,6 +301,10 @@ class _Answer:
         return False
 
 
+class _Broken:
+    """An answer whose connection drops while it is read."""
+
+
 def _urlopen(answers, seen):
     """A stand-in for urllib.request.urlopen: each call takes the next (status, body) or exception."""
 
@@ -282,35 +316,41 @@ def _urlopen(answers, seen):
         status, body = answer
         if status >= 400:
             raise urllib.error.HTTPError(request.full_url, status, "error", {}, io.BytesIO(body))
-        return _Answer(status, body)
+        answer = _Answer(status, body)
+        if isinstance(body, _Broken):
+            answer.read = lambda n=-1: (_ for _ in ()).throw(http.client.IncompleteRead(b"{", 100))
+        return answer
 
     return urlopen
 
 
 def test_openai_and_telegram_checks_with_a_fake_urlopen(env, monkeypatch):
     seen = []
-    answers = [(200, b'{"data": []}'), (401, b"{}"), (403, b"{}"), urllib.error.URLError("no route"), (500, b"")]
+    answers = [(200, b'{"data": []}'), (401, b"{}"), (403, b"{}"), urllib.error.URLError("no route"), (500, b""),
+               (429, b"{}"), (400, b"{}"), (200, _Broken())]
     monkeypatch.setattr(validators, "urlopen", _urlopen(answers, seen))
-    results = [validators.check_openai(OPENAI_KEY) for _ in range(5)]
+    results = [validators.check_openai(OPENAI_KEY) for _ in range(8)]
     assert [(c.ok, c.result) for c in results] == [
-        (True, "ok"), (False, "rejected"), (False, "forbidden"), (False, "offline"), (False, "error")]
+        (True, "ok"), (False, "rejected"), (False, "forbidden"), (False, "offline"), (False, "unavailable"),
+        (False, "unavailable"), (False, "error"), (False, "offline")]
     assert "Key rejected" in results[1].message and "lacks permission" in results[2].message
-    assert "Can't reach OpenAI" in results[3].message
+    assert "Can't reach OpenAI" in results[3].message and "Can't reach OpenAI" in results[7].message  # cut off
     assert seen[0].full_url == "https://api.openai.com/v1/models" and seen[0].get_method() == "GET"
     assert seen[0].get_header("Authorization") == f"Bearer {OPENAI_KEY}"
     assert all(OPENAI_KEY not in c.message for c in results)
-    assert validators.check_openai("").result == "empty" and len(seen) == 5
+    assert validators.check_openai("").result == "empty" and len(seen) == 8
 
     seen.clear()
     me = {"ok": True, "result": {"id": 123456789, "is_bot": True, "first_name": "Alfred", "username": "alfred_home_bot"}}
     answers[:] = [(200, json.dumps(me).encode()), (401, b"{}"), (404, b"{}"), TimeoutError(),
-                  (200, b"not json"), (200, json.dumps({**me, "result": {**me["result"], "username": "<b>x</b>"}}).encode())]
+                  (200, b"not json"), (200, json.dumps({**me, "result": {**me["result"], "username": "<b>x</b>"}}).encode()),
+                  (502, b""), (200, _Broken())]
     assert validators.check_telegram_token("not a token").result == "format" and not seen  # no network for that
     check = validators.check_telegram_token(f" {BOT_TOKEN} ")
     assert check.ok and check.info == {"username": "alfred_home_bot", "name": "Alfred", "link": "https://t.me/alfred_home_bot"}
     assert seen[0].full_url == f"https://api.telegram.org/bot{BOT_TOKEN}/getMe"
-    results = [validators.check_telegram_token(BOT_TOKEN) for _ in range(5)]
-    assert [c.result for c in results] == ["rejected", "rejected", "offline", "error", "error"]
+    results = [validators.check_telegram_token(BOT_TOKEN) for _ in range(7)]
+    assert [c.result for c in results] == ["rejected", "rejected", "offline", "error", "error", "unavailable", "offline"]
     assert all(BOT_TOKEN not in c.message and "123456789" not in c.message for c in [check, *results])
 
     # Through the routes: saved only when the check passes; the bot's name and link are shown.
@@ -331,21 +371,29 @@ def test_openai_and_telegram_checks_with_a_fake_urlopen(env, monkeypatch):
 
 
 # --- Telegram owner --------------------------------------------------------------------------------
+def _telegram_ready(setup, owner=None):
+    setup.store.set_secret("TELEGRAM_BOT_TOKEN", BOT_TOKEN)
+    setup.store.set_secret("SPECTRUM_PROJECT_SECRET", "spectrum-secret-1234")
+    if owner:
+        setup.store.set("TELEGRAM_OWNER_ID", owner)
+
+
 def test_telegram_owner_only_with_the_exact_code(env):
     clock = [1000.0]
     setup = Setup(env)
     setup.wizard.link.clock = lambda: clock[0]
     assert setup.call("POST", "telegram/link")[0] == 409  # bot token and Spectrum secret first
-    setup.store.set_secret("TELEGRAM_BOT_TOKEN", BOT_TOKEN)
-    setup.store.set_secret("SPECTRUM_PROJECT_SECRET", "spectrum-secret-1234")
-    setup.store.set("TELEGRAM_OWNER_ID", "555")  # linked before
+    _telegram_ready(setup, owner="555")  # linked before
+    setup.service.start_telegram()
+    before = setup.store.path.read_text(encoding="utf-8")
 
     status, link = setup.call("POST", "telegram/link")
     code = link["code"]
     assert status == 200 and link["state"] == "waiting" and re.fullmatch(r"[0-9]{6}", code)
     assert link["expires_in"] == 600
-    assert setup.store.get("TELEGRAM_OWNER_ID") is None  # discovery mode while linking: nobody can run anything
-    assert setup.store.get("JARVIS_TELEGRAM") == "1" and setup.service.status().telegram == "running"
+    # Discovery mode while linking (nobody can run anything), but only in the running app: nothing is saved.
+    assert setup.service.status().telegram == "discovery" and link["telegram"] == "discovery"
+    assert setup.store.get("TELEGRAM_OWNER_ID") == "555" and setup.store.path.read_text(encoding="utf-8") == before
 
     def message(user, text):
         setup.service.bus.publish("telegram_user", id=user, text=text)
@@ -359,12 +407,13 @@ def test_telegram_owner_only_with_the_exact_code(env):
     message("888", wrong)  # a wrong guess counts
     status, link = setup.call("GET", "telegram/link")
     assert link["state"] == "waiting" and link["wrong"] == 1 and link["owner"] == ""
-    assert setup.store.get("TELEGRAM_OWNER_ID") is None
+    assert setup.store.get("TELEGRAM_OWNER_ID") == "555"
 
     message("4242", f"  {code[:3]} {code[3:]} ")  # typed as shown, with the space
     status, link = setup.call("GET", "telegram/link")
     assert link["state"] == "linked" and link["owner"] == "4242" and link["code"] == ""
-    assert setup.store.get("TELEGRAM_OWNER_ID") == "4242"
+    assert setup.store.get("TELEGRAM_OWNER_ID") == "4242" and setup.store.get("JARVIS_TELEGRAM") == "1"
+    assert _wait(lambda: setup.service.status().telegram == "running")  # restarted with the new owner
     message("777", code)  # too late, and the code worked once
     assert setup.store.get("TELEGRAM_OWNER_ID") == "4242"
     assert _status(setup.state(), "telegram")["status"] == "done"
@@ -377,7 +426,8 @@ def test_telegram_owner_only_with_the_exact_code(env):
     message("999", code)
     link = setup.call("GET", "telegram/link")[1]
     assert link["state"] == "locked" and link["code"] == ""
-    assert setup.store.get("TELEGRAM_OWNER_ID") == "4242"  # put back
+    assert setup.store.get("TELEGRAM_OWNER_ID") == "4242"
+    assert _wait(lambda: setup.service.status().telegram == "running")  # back with its owner
 
     # A code expires after 10 minutes.
     code = setup.call("POST", "telegram/link")[1]["code"]
@@ -385,12 +435,103 @@ def test_telegram_owner_only_with_the_exact_code(env):
     message("31337", code)
     assert setup.call("GET", "telegram/link")[1]["state"] == "expired"
     assert setup.store.get("TELEGRAM_OWNER_ID") == "4242"
+    assert _wait(lambda: setup.service.status().telegram == "running")
 
-    # Cancelling puts the owner back too.
+    # Cancelling leaves the owner too.
     setup.call("POST", "telegram/link")
-    assert setup.store.get("TELEGRAM_OWNER_ID") is None
+    assert setup.service.status().telegram == "discovery"
     assert setup.call("DELETE", "telegram/link")[1]["state"] == "cancelled"
     assert setup.store.get("TELEGRAM_OWNER_ID") == "4242"
+    assert _wait(lambda: setup.service.status().telegram == "running")
+
+
+def _within(seconds, fn, *args):
+    """fn(*args) on another thread; fails instead of hanging when it doesn't return in time (a deadlock)."""
+    out = {}
+    thread = threading.Thread(target=lambda: out.update(value=fn(*args)), daemon=True)
+    thread.start()
+    thread.join(seconds)
+    assert not thread.is_alive(), f"{fn} didn't return within {seconds} s"
+    return out["value"]
+
+
+def test_cancelling_a_link_twice_never_hangs(env):
+    """Cancel pressed twice, or just after the code was used, locked or expired, must answer every time."""
+    clock = [1000.0]
+    setup = Setup(env)
+    setup.wizard.link.clock = lambda: clock[0]
+    _telegram_ready(setup)
+    assert _within(5, setup.call, "POST", "telegram/link")[1]["state"] == "waiting"
+    assert _within(5, setup.call, "DELETE", "telegram/link")[1]["state"] == "cancelled"
+    assert _within(5, setup.call, "DELETE", "telegram/link")[1]["state"] == "cancelled"  # the double click
+    assert _within(5, setup.call, "GET", "telegram/link")[1]["state"] == "cancelled"
+
+    code = _within(5, setup.call, "POST", "telegram/link")[1]["code"]
+    setup.service.bus.publish("telegram_user", id="4242", text=code)
+    assert _within(5, setup.call, "DELETE", "telegram/link")[1]["state"] == "linked"  # too late to cancel
+    assert setup.store.get("TELEGRAM_OWNER_ID") == "4242"
+
+    _within(5, setup.call, "POST", "telegram/link")
+    clock[0] += 601
+    assert _within(5, setup.call, "DELETE", "telegram/link")[1]["state"] == "expired"
+    assert _within(5, setup.call, "POST", "telegram/link")[1]["state"] == "waiting"  # still works afterwards
+    assert _within(5, setup.wizard.link.cancel)["state"] == "cancelled"
+
+
+def test_a_link_never_saves_until_the_code_arrives(env):
+    """Alfred quits or the PC restarts while a code is on screen: the owner from before is still there."""
+    setup = Setup(env)
+    _telegram_ready(setup, owner="555")
+    assert setup.call("POST", "telegram/link")[1]["state"] == "waiting"
+    assert config.read_env_file(setup.store.path) == {"TELEGRAM_OWNER_ID": "555"}
+
+    again = Setup(env)  # Alfred starts again: a new store, service and setup on the same files
+    assert again.call("GET", "telegram/link")[1]["state"] == "idle"
+    assert again.call("GET", "settings")[1]["telegram_owner"] == "555"
+    assert again.store.get("TELEGRAM_OWNER_ID") == "555" and again.store.get("JARVIS_TELEGRAM") is None
+    again.service.start_telegram()
+    assert again.service.status().telegram == "running"  # not left in discovery mode
+
+
+def test_a_link_puts_telegram_back_as_it_was(env):
+    """No owner and Telegram off before the code: off again afterwards, not left in discovery mode."""
+    setup = Setup(env)
+    _telegram_ready(setup)
+    assert setup.service.status().telegram == "off"
+    setup.call("POST", "telegram/link")
+    assert setup.service.status().telegram == "discovery"
+    setup.call("DELETE", "telegram/link")
+    assert _wait(lambda: setup.service.status().telegram == "off")
+    assert setup.store.get("TELEGRAM_OWNER_ID") is None and setup.store.get("JARVIS_TELEGRAM") is None
+
+    setup.store.set("JARVIS_TELEGRAM", "0")  # turned off in Settings, then linked in the setup: on with the owner
+    code = setup.call("POST", "telegram/link")[1]["code"]
+    setup.service.bus.publish("telegram_user", id="4242", text=code)
+    assert _wait(lambda: setup.service.status().telegram == "running")
+    assert setup.store.get("TELEGRAM_OWNER_ID") == "4242" and setup.store.get("JARVIS_TELEGRAM") == "1"
+
+
+def test_a_link_refuses_an_owner_set_outside_alfreds_settings(env):
+    setup = Setup(env)
+    _telegram_ready(setup, owner="555")
+    os.environ["TELEGRAM_OWNER_ID"] = "777"  # wins over the saved owner, so a linked account would be ignored
+    status, body = setup.call("POST", "telegram/link")
+    assert status == 409 and "environment" in body["error"]
+    assert setup.call("GET", "telegram/link")[1]["state"] == "idle" and setup.service.status().telegram == "off"
+    assert setup.store.get("TELEGRAM_OWNER_ID") == "555"
+
+
+def test_discovery_mode_is_only_an_override_for_the_bridge(env):
+    store = Store(env / "settings.env", MemoryBackend())
+    store.set_secret("TELEGRAM_BOT_TOKEN", BOT_TOKEN)
+    store.set("TELEGRAM_OWNER_ID", "555")
+    bridge = TelegramController(SimpleNamespace(bus=EventBus(), store=store))
+    assert bridge.settings()["TELEGRAM_OWNER_ID"] == "555"
+    bridge.discovery = True
+    assert bridge.settings()["TELEGRAM_OWNER_ID"] == ""  # the bridge starts without an owner
+    os.environ["TELEGRAM_OWNER_ID"] = "777"
+    assert bridge.settings()["TELEGRAM_OWNER_ID"] == ""  # even over the environment's
+    assert store.get("TELEGRAM_OWNER_ID") == "555"
 
 
 def test_bridge_reports_what_discovery_users_typed():
@@ -511,14 +652,16 @@ def test_legacy_import(env):
     status, body = setup.call("GET", "legacy")
     assert status == 200 and body["found"] is True and body["path"] == str(old)
     assert body["keys"] == [
-        {"name": "ANTHROPIC_API_KEY", "secret": True, "value": "sk-ant-...1234"},
-        {"name": "JARVIS_MODEL", "secret": False, "value": "claude-opus-5-5"},
-        {"name": "SOME_PASSWORD", "secret": True, "value": "(hidden)"},
+        {"name": "ANTHROPIC_API_KEY", "secret": True, "value": "sk-ant-...1234", "import": True},
+        {"name": "JARVIS_MODEL", "secret": False, "value": "claude-opus-5-5", "import": True},
+        {"name": "SOME_PASSWORD", "secret": True, "value": "(hidden, not imported)", "import": False},
     ]
     assert "OLDKEY" not in json.dumps(body) and "hunter2" not in json.dumps(body)
 
     status, body = setup.call("POST", "legacy/import")
-    assert status == 200 and "ANTHROPIC_API_KEY" in body["imported"] and "JARVIS_MODEL" in body["imported"]
+    assert status == 200 and body["imported"] == ["ANTHROPIC_API_KEY", "JARVIS_MODEL"]
+    assert body["left_out"] == ["SOME_PASSWORD"]
+    assert "hunter2" not in setup.store.path.read_text(encoding="utf-8")  # never plain text in settings.env
     assert setup.store.get_secret("ANTHROPIC_API_KEY") == "sk-ant-api03-OLDKEYabcdefghijklmnop-1234"
     assert setup.store.values()["JARVIS_MODEL"] == "claude-opus-5-5"
     assert "ANTHROPIC_API_KEY" not in setup.store.values()  # keys never land in settings.env
@@ -528,11 +671,20 @@ def test_legacy_import(env):
 
     # A file the user picks: its text is sent, read from a private copy that is removed straight away.
     status, body = setup.call("POST", "legacy/preview", {"text": f"OPENAI_API_KEY={OPENAI_KEY}\n"})
-    assert status == 200 and body["keys"] == [{"name": "OPENAI_API_KEY", "secret": True, "value": "sk-proj-...0123"}]
+    assert status == 200 and body["keys"] == [
+        {"name": "OPENAI_API_KEY", "secret": True, "value": "sk-proj-...0123", "import": True}]
     status, body = setup.call("POST", "legacy/import", {"text": f"OPENAI_API_KEY={OPENAI_KEY}\n"})
     assert status == 200 and body["imported"] == ["OPENAI_API_KEY"]
     assert setup.store.get_secret("OPENAI_API_KEY") == OPENAI_KEY
     assert not list(config.data_dir().glob("import-*"))
+    # Names Alfred doesn't know but that look secret are hidden and never land in settings.env (plain text).
+    hf = "HF_TOKEN=hf_SuperSecretValue123456\nJARVIS_SPEAK=0\n"
+    assert setup.call("POST", "legacy/preview", {"text": hf})[1]["keys"][0] == {
+        "name": "HF_TOKEN", "secret": True, "value": "(hidden, not imported)", "import": False}
+    status, body = setup.call("POST", "legacy/import", {"text": hf})
+    assert status == 200 and body["imported"] == ["JARVIS_SPEAK"] and body["left_out"] == ["HF_TOKEN"]
+    assert "HF_TOKEN" not in setup.store.values() and "hf_Super" not in setup.store.path.read_text(encoding="utf-8")
+    assert setup.call("POST", "legacy/import", {"text": "HF_TOKEN=hf_x\n"})[0] == 400  # nothing Alfred can import
     assert setup.call("POST", "legacy/preview", {"text": " "})[0] == 400
     assert setup.call("POST", "legacy/preview", {"text": "A=b\n" * 20000})[0] == 400
     assert setup.call("POST", "legacy/import", {"text": "# nothing here\n"})[0] == 400
@@ -599,6 +751,22 @@ def test_speech_model_download_progress_and_cancel(env):
     status, body = setup.call("GET", "speech")
     assert status == 200 and body["present"] is True and body["model"] == "base.en" and body["voice_test"] is False
     assert set(body["microphones"]) == {"available", "devices", "error"}
+
+
+def test_download_again_right_after_cancel(env):
+    """The cancelled download's reader finishes late: it must leave the new download alone."""
+    downloads = speech.ModelDownload(_fake_download("slow"))
+    downloads.start("base.en")
+    first = downloads._child
+    assert downloads.cancel()["state"] == "cancelled"
+    assert downloads.start("base.en")["state"] == "downloading"  # pressed again at once
+    second = downloads._child
+    assert second is not first
+    assert first.wait(10) is not None  # the first process is gone
+    time.sleep(0.5)  # and its reader has finished
+    assert downloads.state == "downloading" and downloads._child is second and not downloads.error
+    assert downloads.cancel()["state"] == "cancelled"  # Cancel still stops the new one
+    assert second.wait(10) is not None and downloads.wait(10)
 
 
 def test_microphone_choice_and_voice_test(env, monkeypatch):
@@ -712,6 +880,28 @@ def test_routes_need_sign_in_and_the_page_is_served(env):
         app.close()
 
 
+def test_the_stand_in_engine_keeps_its_own_setup(env):
+    """--fake-core: the setup's progress and "Start Alfred when I sign in" never reach the real Alfred."""
+    consent.record("test")
+    store = Store(env / "Jarvis" / "fake-settings.env", MemoryBackend())  # as main.py builds it
+    app = App(FakeService(store, delay=0.01, consent=None), store=store)
+    wizard = app.onboarding
+    assert call(app.router, "POST", "/api/onboarding/step", {"step": "welcome", "status": "done"})[0] == 200
+    for name in ("consent", "safety", "finish"):
+        assert call(app.router, "POST", "/api/onboarding/step", {"step": name, "status": "done"})[0] == 200
+    assert call(app.router, "GET", "/api/onboarding/state")[1]["complete"] is True
+    status, auto = call(app.router, "PUT", "/api/onboarding/autostart", {"on": True})
+    assert status == 200 and auto["enabled"] is True and auto["simulated"] is True
+    assert isinstance(wizard.autostart.key, system.PretendRunKey)  # never Windows' Run key
+    assert wizard.state.path == env / "Jarvis" / "fake-onboarding.json" and wizard.state.path.is_file()
+    assert not (env / "Jarvis" / "onboarding.json").exists()
+
+    real = App(SimpleNamespace(store=store), store=store).onboarding  # the real engine: the real files
+    assert real.state.path == env / "Jarvis" / "onboarding.json" and real.state.read()["completed_at"] is None
+    assert real.autostart.key is None  # RunKey() on Windows, made when first used
+    assert not real.any_os and wizard.any_os
+
+
 def test_ui_files_follow_the_page_rules():
     """No inline scripts or styles (the CSP forbids them), nothing from the internet, never innerHTML."""
     folder = UI_DIR / "onboarding"
@@ -730,7 +920,10 @@ def test_ui_files_follow_the_page_rules():
     for part in (".aero-panel", ".aero-button", ".aero-input", ".aero-toggle", ".aero-progress", ".aero-steps",
                  ".aero-stop", "prefers-reduced-motion", "prefers-color-scheme: dark", "Segoe UI"):
         assert part in aero, part
-    assert "/api/onboarding/state" in (UI_DIR / "app.js").read_text(encoding="utf-8")  # first run goes to the setup
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    assert "/api/onboarding/state" in app_js  # first run goes to the setup
+    handler = app_js[app_js.index('case "telegram_user"'):app_js.index('case "approval"')]
+    assert "TELEGRAM_OWNER_ID" not in handler and "button" not in handler  # only the setup's code links an owner
 
 
 def test_setup_imports_nothing_optional():

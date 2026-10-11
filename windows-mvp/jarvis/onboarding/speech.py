@@ -153,6 +153,8 @@ class ModelDownload:
         code = child.wait(10)
         child.close()
         with self._lock:
+            if self._child is not child:
+                return  # a cancelled download, and Download was pressed again meanwhile: not ours to finish
             self._child = None
             if self.state != "downloading":
                 return  # cancelled

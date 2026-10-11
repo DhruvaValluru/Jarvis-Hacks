@@ -2,10 +2,11 @@
 
 Key checks make one free call to the service the key is for (list models, getMe). Messages never
 contain the key, and errors are mapped to plain words: rejected (401), lacks permission (403),
-can't reach the service (no connection). Network calls use urllib only (no new dependency);
-tests replace `urlopen` here.
+can't reach the service (no connection), busy or down (429, 5xx). Network calls use urllib only (no
+new dependency); tests replace `urlopen` here.
 """
 
+import http.client
 import json
 import re
 import secrets
@@ -33,10 +34,15 @@ MIN_PAIRING = 16  # remote.MIN_TOKEN: a shorter JARVIS_TOKEN won't share a PC
 MAX_PAIRING = 200
 
 
+# The service couldn't say whether the key is good (no connection, or busy or down): the setup may save
+# the key without checking. Never for "error" (anything unexpected) or a key the service turned down.
+MAY_SAVE_UNCHECKED = ("offline", "unavailable")
+
+
 @dataclass
 class Check:
     ok: bool
-    result: str  # ok, empty, format, rejected, forbidden, offline, error
+    result: str  # ok, empty, format, rejected, forbidden, offline, unavailable (429, 5xx), error
     message: str
     info: dict = field(default_factory=dict)
 
@@ -85,9 +91,10 @@ def anthropic_error(error: Exception) -> Check:
     if _connection_error(error):
         return Check(False, "offline", "Can't reach Anthropic: check your internet connection, then try again.")
     if status == 429:
-        return Check(False, "error", "Anthropic is limiting requests for this key right now. Try again in a minute.")
+        return Check(False, "unavailable", "Anthropic is limiting requests for this key right now. "
+                                           "Try again in a minute.")
     if isinstance(status, int) and status >= 500:
-        return Check(False, "error", f"Anthropic had a problem (error {status}). Try again in a minute.")
+        return Check(False, "unavailable", f"Anthropic had a problem (error {status}). Try again in a minute.")
     return Check(False, "error", f"Anthropic couldn't check the key ({type(error).__name__}).")
 
 
@@ -124,7 +131,9 @@ def check_openai(key) -> Check:
         return Check(False, "forbidden", "This key lacks permission to list models. Give it the Models "
                                          "permission (or All) in OpenAI's API key settings.")
     if status == 429:
-        return Check(False, "error", "OpenAI is limiting requests for this key right now. Try again in a minute.")
+        return Check(False, "unavailable", "OpenAI is limiting requests for this key right now. Try again in a minute.")
+    if status >= 500:
+        return Check(False, "unavailable", f"OpenAI had a problem (error {status}). Try again in a minute.")
     return Check(False, "error", f"OpenAI couldn't check the key (error {status}). Try again in a minute.")
 
 
@@ -144,6 +153,8 @@ def check_telegram_token(token) -> Check:
     if status in (401, 404):
         return Check(False, "rejected", "Token rejected: Telegram doesn't know this bot token. Copy it again from "
                                         "@BotFather, or get a new one there with /token.")
+    if status == 429 or status >= 500:
+        return Check(False, "unavailable", f"Telegram is busy (error {status}). Try again in a minute.")
     if status != 200:
         return Check(False, "error", f"Telegram couldn't check the token (error {status}). Try again in a minute.")
     try:
@@ -227,5 +238,5 @@ def fetch(request: urllib.request.Request, timeout: float = TIMEOUT) -> tuple[in
         finally:
             e.close()
         return e.code, body
-    except (urllib.error.URLError, OSError, TimeoutError, ssl.SSLError, ValueError) as e:
-        raise Offline(type(e).__name__) from None
+    except (urllib.error.URLError, OSError, TimeoutError, ssl.SSLError, ValueError, http.client.HTTPException) as e:
+        raise Offline(type(e).__name__) from None  # e.g. IncompleteRead: the connection dropped mid-answer

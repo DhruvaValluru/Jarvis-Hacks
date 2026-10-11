@@ -246,6 +246,11 @@ class AlfredService:
     def stop_telegram(self) -> None:
         self.telegram.stop()
 
+    def telegram_discovery(self, on: bool) -> None:
+        """While the setup links an owner: the bridge starts without one (discovery mode) until this is
+        turned off again. Nothing is saved; restart the bridge for it to take effect."""
+        self.telegram.discovery = bool(on)
+
     # --- reading ----------------------------------------------------------
     def status(self) -> Status:
         with self._lock:

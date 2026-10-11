@@ -407,10 +407,11 @@
     for (const key of keys) {
       const row = el("tr");
       row.append(el("td", "key", key.name), el("td", key.secret ? "secret" : null, key.value));
+      if (key.import === false) row.className = "left-out";
       rows.append(row);
     }
     $("legacy-table").hidden = !keys.length;
-    $("legacy-import").disabled = !keys.length;
+    $("legacy-import").disabled = !keys.some((key) => key.import !== false);
   }
 
   async function chooseLegacy() {
@@ -440,7 +441,9 @@
         () => api("POST", "/api/onboarding/legacy/import", legacyText === null ? {} : { text: legacyText }));
       legacyText = null; // forget the file's text
       state = result.state;
-      note("legacy-msg", `Imported ${result.imported.length} settings: ${result.imported.join(", ")}.`
+      const leftOut = result.left_out && result.left_out.length
+        ? ` Left out, because they look secret and Alfred doesn’t use them: ${result.left_out.join(", ")}.` : "";
+      note("legacy-msg", `Imported ${result.imported.length} settings: ${result.imported.join(", ")}.${leftOut}`
         + (result.restarting ? " Alfred restarts its engine to use them." : ""), "ok");
       renderSteps();
       renderFooter();
@@ -475,7 +478,8 @@
     } catch (e) {
       const result = e.data && e.data.result;
       field.setAttribute("aria-invalid", result === "rejected" || result === "format" ? "true" : "false");
-      $("anthropic-anyway").hidden = !(result === "offline" || result === "error");
+      // Only when Anthropic couldn't answer (no connection, busy or down), never for a key it turned down.
+      $("anthropic-anyway").hidden = !(result === "offline" || result === "unavailable");
       note("anthropic-msg", e.message, "error");
     }
   }
@@ -711,6 +715,8 @@
       note("link-msg", "The code expired before it reached your bot. Show a new one.", "warn");
     } else if (link.state === "locked") {
       note("link-msg", "Too many wrong codes were sent to your bot, so that code no longer works. Show a new one.", "error");
+    } else if (link.state === "cancelled") {
+      note("link-msg", "Cancelled. Nothing changed: your bot is back as it was.", "info");
     } else {
       note("link-msg", "");
     }
@@ -740,7 +746,7 @@
   async function cancelLink() {
     stopPoll("link");
     try {
-      showLink(await api("DELETE", "/api/onboarding/telegram/link"));
+      showLink(await busy($("link-cancel"), "Cancelling…", () => api("DELETE", "/api/onboarding/telegram/link")));
     } catch (e) {
       note("link-msg", e.message, "error");
     }
@@ -860,6 +866,8 @@
     box.checked = auto.enabled;
     box.disabled = !auto.supported;
     if (!auto.supported) $("autostart-help").textContent = "Only on Windows.";
+    else if (auto.simulated) $("autostart-help").textContent = "The stand-in engine (--fake-core) only pretends: "
+      + "Windows’ startup apps don’t change.";
   }
 
   async function setAutostart() {

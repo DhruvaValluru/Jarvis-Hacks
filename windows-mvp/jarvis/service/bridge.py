@@ -42,6 +42,7 @@ class TelegramController:
         self.cmd = list(cmd) if cmd else None
         self.state = "off"
         self.last_error = ""
+        self.discovery = False  # the setup is linking an owner: start without one (onboarding/link.py)
         self._lock = threading.Lock()
         self._child: Child | None = None
         self._ids: dict[str, object] = {}  # engine command id -> the bridge's id for it
@@ -49,7 +50,10 @@ class TelegramController:
         self.log: deque[str] = deque(maxlen=100)
 
     def settings(self) -> dict[str, str]:
-        return {**DEFAULTS, **config.child_env(KEYS, self.service.store)}
+        values = {**DEFAULTS, **config.child_env(KEYS, self.service.store)}
+        if self.discovery:
+            values["TELEGRAM_OWNER_ID"] = ""  # over the environment's too: the bridge runs nothing, only reports
+        return values
 
     def configured(self) -> bool:
         values = self.settings()

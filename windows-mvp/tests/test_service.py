@@ -288,7 +288,8 @@ def test_fake_service_has_the_same_api():
     assert wait_for(fake, lambda e: e["type"] == "done" and e["id"] == cid, timeout=5)["stopped"]
     assert wait_for(fake, lambda e: e["type"] == "ready" and e["after_stop"], timeout=5)
     for name in ("start", "shutdown", "restart_engine", "submit", "run_and_wait", "reset_conversation", "stop",
-                 "approve", "status", "events", "subscribe", "wait_ready", "start_telegram", "stop_telegram"):
+                 "approve", "status", "events", "subscribe", "wait_ready", "start_telegram", "stop_telegram",
+                 "telegram_discovery"):
         assert callable(getattr(FakeService, name)) and callable(getattr(AlfredService, name)), name
     fake.shutdown()
     assert FakeService(consent=False).start().engine == "needs_consent"
