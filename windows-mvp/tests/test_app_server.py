@@ -19,7 +19,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from jarvis import config, consent  # noqa: E402
+from jarvis import config, consent, selftest  # noqa: E402
 from jarvis.app import main as app_main  # noqa: E402
 from jarvis.app.server import CSP, UI_DIR, App, tail_jsonl  # noqa: E402
 from jarvis.service import AlfredService, QueueFull  # noqa: E402
@@ -493,6 +493,7 @@ def _fake_webview(monkeypatch, renderer):
     webview.platforms.winforms.renderer = renderer
     for module in (webview, webview.platforms, webview.platforms.winforms):
         monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setattr(selftest, "webview2_version", lambda: "131.0.2903.70" if renderer == "edgechromium" else "")
     monkeypatch.setattr(app_main, "_missing_webview2", functools.partial(app_main._missing_webview2, "win32"))
     return windows
 
@@ -555,6 +556,24 @@ def test_without_webview2_alfred_uses_the_browser(app, monkeypatch):
     assert shell._run_window() is False and shell.window_failed and windows == []
     shell.show()
     assert len(opened) == 1 and "/auth?code=" in opened[0]
+
+
+def test_pywebviews_backend_is_left_alone_without_webview2(monkeypatch):
+    """Importing pywebview's Windows backend on a PC without WebView2 writes Internet Explorer settings
+    into the registry, so the registry is asked first."""
+    missing_webview2 = functools.partial(app_main._missing_webview2, "win32")
+    _fake_webview(monkeypatch, "edgechromium")
+    winforms = sys.modules.pop("webview.platforms.winforms")
+    del sys.modules["webview.platforms"].winforms  # importing it now raises ImportError
+    monkeypatch.setattr(selftest, "webview2_version", lambda: "")
+    assert missing_webview2()
+
+    def unreadable():
+        raise OSError("registry unreadable")
+
+    sys.modules["webview.platforms"].winforms = sys.modules["webview.platforms.winforms"] = winforms
+    monkeypatch.setattr(selftest, "webview2_version", unreadable)
+    assert missing_webview2() is False  # pywebview's own answer decides
 
 
 def test_stop_hotkey_only_posts_to_its_running_thread(monkeypatch):

@@ -377,9 +377,17 @@ def tray_image(Image, ImageDraw):
 
 def _missing_webview2(platform: str = sys.platform) -> bool:
     """Without the WebView2 runtime pywebview quietly uses Internet Explorer (MSHTML), which can't run
-    Alfred's page; it doesn't raise. Ask which engine it picked."""
+    Alfred's page; it doesn't raise. Look in the registry first: importing pywebview's backend on a PC
+    without WebView2 writes Internet Explorer settings. Then ask which engine it picked."""
     if platform != "win32":
         return False
+    from .. import selftest
+
+    try:
+        if not selftest.webview2_version():
+            return True
+    except Exception:  # noqa: BLE001 - can't tell from the registry; pywebview's own answer decides
+        pass
     from webview.platforms import winforms
 
     return getattr(winforms, "renderer", "") == "mshtml"
