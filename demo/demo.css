@@ -1,0 +1,769 @@
+/* Alfred's web demo: the banner, the layout beside Alfred's real window, and the simulated PC (a small
+ * Windows-like desktop). Alfred's own window keeps its styles (app.css, theme/aero.css); this only adds.
+ * Light and dark follow the system, or data-theme="light" / "dark" on <html> (the artifact host's choice),
+ * the same way the app's CSS does. */
+
+:root {
+  --demo-badge-top: #ffd36e;
+  --demo-badge-bottom: #f0a020;
+  --demo-badge-text: #3d2400;
+  --demo-target: #ffb900;
+
+  /* the simulated Windows */
+  --win-bg: #f3f3f3;
+  --win-pane: #ffffff;
+  --win-text: #1b1b1b;
+  --win-muted: #5c6670;
+  --win-line: #e0e0e0;
+  --win-field: #8a8a8a;
+  --win-accent: #0067c0;
+  --win-select: #cce4f7;
+  --win-taskbar: rgba(240, 245, 250, 0.9);
+  --win-task-active: rgba(255, 255, 255, 0.75);
+  --win-shadow: 0 10px 28px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.2);
+  --win-page: linear-gradient(160deg, #f5f8ff, #e6eeff);
+  --wall: radial-gradient(ellipse 55% 65% at 64% 60%, #b9ddff 0%, #5aa6f7 26%, rgba(42, 98, 201, 0) 60%),
+    radial-gradient(ellipse 80% 60% at 30% 85%, #2f74e0 0%, rgba(47, 116, 224, 0) 70%),
+    linear-gradient(160deg, #d7ebff 0%, #74b0f3 45%, #2a62c9 100%);
+  --wall-laptop: radial-gradient(ellipse 60% 70% at 40% 60%, #b8f3e0 0%, #45c7a4 30%, rgba(17, 120, 110, 0) 65%),
+    linear-gradient(150deg, #dffbf2 0%, #5cc6b0 50%, #137a6e 100%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --demo-badge-top: #ffcf6e;
+    --demo-badge-bottom: #d98b10;
+    --demo-badge-text: #2a1800;
+    --demo-target: #ffc83d;
+    --win-bg: #202020;
+    --win-pane: #2b2b2b;
+    --win-text: #f3f3f3;
+    --win-muted: #a8b2bb;
+    --win-line: #3b3b3b;
+    --win-field: #6f6f6f;
+    --win-accent: #4cc2ff;
+    --win-select: #27445e;
+    --win-taskbar: rgba(28, 32, 38, 0.9);
+    --win-task-active: rgba(255, 255, 255, 0.1);
+    --win-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4);
+    --win-page: linear-gradient(160deg, #1d2433, #151b27);
+    --wall: radial-gradient(ellipse 55% 65% at 64% 60%, #3d74c9 0%, #1d4590 28%, rgba(16, 38, 77, 0) 62%),
+      radial-gradient(ellipse 80% 60% at 30% 85%, #12306b 0%, rgba(18, 48, 107, 0) 70%),
+      linear-gradient(160deg, #0d1b33 0%, #12295a 50%, #08111f 100%);
+    --wall-laptop: radial-gradient(ellipse 60% 70% at 40% 60%, #1f7f6c 0%, #0f5249 32%, rgba(8, 40, 36, 0) 66%),
+      linear-gradient(150deg, #0c2621 0%, #103f37 50%, #061512 100%);
+  }
+}
+:root[data-theme="dark"] {
+  --demo-badge-top: #ffcf6e;
+  --demo-badge-bottom: #d98b10;
+  --demo-badge-text: #2a1800;
+  --demo-target: #ffc83d;
+  --win-bg: #202020;
+  --win-pane: #2b2b2b;
+  --win-text: #f3f3f3;
+  --win-muted: #a8b2bb;
+  --win-line: #3b3b3b;
+  --win-field: #6f6f6f;
+  --win-accent: #4cc2ff;
+  --win-select: #27445e;
+  --win-taskbar: rgba(28, 32, 38, 0.9);
+  --win-task-active: rgba(255, 255, 255, 0.1);
+  --win-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --win-page: linear-gradient(160deg, #1d2433, #151b27);
+  --wall: radial-gradient(ellipse 55% 65% at 64% 60%, #3d74c9 0%, #1d4590 28%, rgba(16, 38, 77, 0) 62%),
+    radial-gradient(ellipse 80% 60% at 30% 85%, #12306b 0%, rgba(18, 48, 107, 0) 70%),
+    linear-gradient(160deg, #0d1b33 0%, #12295a 50%, #08111f 100%);
+  --wall-laptop: radial-gradient(ellipse 60% 70% at 40% 60%, #1f7f6c 0%, #0f5249 32%, rgba(8, 40, 36, 0) 66%),
+    linear-gradient(150deg, #0c2621 0%, #103f37 50%, #061512 100%);
+}
+
+body { background: var(--aero-sky-mid); }
+
+/* --- the page: banner on top, Alfred's window and the simulated PC side by side ------------------------------ */
+.demo-root {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  /* clear of a phone's status and home bars when a host page asks for viewport-fit=cover (0 elsewhere) */
+  padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+}
+.demo-stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 40%);
+}
+/* Alfred's window. Its dialogs (position: fixed) and sky stay inside this pane. */
+.demo-app {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  transform: translateZ(0);
+  container-type: inline-size;
+}
+
+/* --- the banner ------------------------------------------------------------------------------------------------- */
+.demo-bar {
+  flex: none;
+  position: relative;
+  z-index: 40;
+  display: grid;
+  gap: 6px;
+  padding: 8px 16px;
+  color: var(--aero-text);
+  font: 14px/1.4 var(--aero-font);
+  background-color: var(--aero-glass-strong);
+  background-image: var(--aero-glass-gloss);
+  border-bottom: 1px solid var(--aero-glass-edge);
+  box-shadow: var(--aero-shadow-soft);
+}
+.demo-bar__row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.demo-badge {
+  flex: none;
+  padding: 1px 10px;
+  border: 1px solid #b97400;
+  border-radius: var(--aero-radius-pill);
+  background: var(--aero-shine), linear-gradient(to bottom, var(--demo-badge-top), var(--demo-badge-bottom));
+  color: var(--demo-badge-text);
+  font: 700 11.5px/1.7 var(--aero-font);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.demo-bar__text { flex: 1; min-width: 0; margin: 0; }
+.demo-bar__links { flex: none; display: flex; align-items: center; gap: 6px; }
+.demo-bar .demo-link,
+.demo-bar .demo-chip,
+.demo-pc .demo-pc__toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--aero-button-border);
+  border-radius: var(--aero-radius-pill);
+  background: var(--aero-shine), linear-gradient(to bottom, var(--aero-button-top), var(--aero-button-bottom));
+  color: var(--aero-button-text);
+  font: 600 13px/1 var(--aero-font);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 1px 4px rgba(6, 52, 94, 0.18);
+  transform: none;
+}
+.demo-bar .demo-link:hover,
+.demo-bar .demo-chip:hover,
+.demo-pc .demo-pc__toggle:hover { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 0 0 3px var(--aero-glow); }
+.demo-bar .demo-link--get {
+  border-color: var(--aero-primary-border);
+  background: var(--aero-shine), linear-gradient(to bottom, var(--aero-primary-top), var(--aero-primary-bottom));
+  color: #fff;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.3);
+}
+.demo-bar :focus-visible, .demo-pc :focus-visible {
+  outline: 3px solid var(--aero-focus);
+  outline-offset: 2px;
+}
+.demo-try { align-items: flex-start; }
+.demo-try__label { flex: none; padding-top: 5px; color: var(--aero-text-muted); font-size: 13px; font-weight: 700; }
+.demo-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.demo-bar .demo-chip { min-height: 28px; padding: 0 11px; font-weight: 600; font-size: 12.5px; }
+.demo-bar__msg { margin: 0; color: var(--aero-note-warn-text); font-size: 13px; }
+.demo-note {
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--aero-note-info-border);
+  border-radius: var(--aero-radius-s);
+  background: var(--aero-note-info-bg);
+  color: var(--aero-note-info-text);
+  font-size: 13.5px;
+}
+.demo-nolink, .demo-nolink:hover { color: var(--aero-text-muted); text-decoration: none; cursor: default; }
+.demo-short { display: none; }
+/* next to each key field of the setup (demo-ui.js) */
+.demo-keynote { margin: -4px 0 10px; color: var(--aero-note-info-text); font-size: 13.5px; }
+
+/* the setup page: the banner sits above the setup's own bar */
+.demo-bar--setup { position: relative; z-index: 11; }
+
+/* --- the simulated PC panel ----------------------------------------------------------------------------------------- */
+.demo-pc {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px 16px;
+  color: var(--aero-text);
+  font: 14px/1.4 var(--aero-font);
+  background-color: var(--aero-glass);
+  background-image: var(--aero-glass-gloss);
+  border-left: 1px solid var(--aero-glass-border);
+  box-shadow: inset 1px 0 0 var(--aero-glass-edge);
+}
+.demo-pc__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.demo-pc__title { margin: 0; font: 600 18px/1.2 var(--aero-font-display); }
+.demo-pc__sub { flex: 1 1 200px; margin: 0; color: var(--aero-text-muted); font-size: 13px; }
+.demo-pc .demo-pc__toggle { display: none; min-height: 26px; font-size: 12.5px; }
+.demo-machines { display: grid; gap: 12px; margin-top: 10px; }
+.demo-machine { margin: 0; }
+.demo-machine figcaption { margin-top: 5px; color: var(--aero-text-muted); font-size: 12.5px; text-align: center; }
+.demo-screen {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border: 6px solid #14181c;
+  border-radius: 10px;
+  background: #000;
+  box-shadow: 0 8px 22px rgba(6, 52, 94, 0.3);
+}
+.demo-machine--laptop .demo-screen { width: 70%; margin: 0 auto; border-width: 5px; }
+.demo-pc[data-focus="laptop"] .demo-machine--laptop .demo-screen {
+  box-shadow: 0 0 0 3px var(--aero-aqua), 0 0 22px var(--aero-glow);
+}
+
+/* --- small screens: the simulated PC above Alfred's window, and it can fold away -------------------------------------- */
+@media (max-width: 999px) {
+  .demo-stage { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .demo-pc {
+    order: -1;
+    overflow: visible;
+    padding: 6px 12px 8px;
+    border-left: 0;
+    border-bottom: 1px solid var(--aero-glass-edge);
+    box-shadow: none;
+  }
+  .demo-pc__head { align-items: center; }
+  .demo-pc__title { font-size: 15px; }
+  .demo-pc__sub { font-size: 12px; }
+  .demo-pc .demo-pc__toggle { display: inline-flex; margin-left: auto; }
+  .demo-machines { margin-top: 6px; }
+  .demo-screen,
+  .demo-machine--laptop .demo-screen {
+    width: auto;
+    height: min(27vh, calc((100vw - 36px) * 0.625));
+    margin: 0 auto;
+  }
+  .demo-machine figcaption { margin-top: 2px; font-size: 11.5px; }
+  .demo-machine--laptop { display: none; }
+  .demo-pc[data-focus="laptop"] .demo-machine--laptop { display: block; }
+  .demo-pc[data-focus="laptop"] .demo-machine--desktop { display: none; }
+  .demo-pc[data-collapsed] .demo-machines { display: none; }
+  /* Alfred's pane is short here, so its approval covers only that pane, under its header: the simulated
+   * PC above (with the pointer on what it asks about) and STOP stay in view. A long request scrolls. */
+  .demo-app { transform: none; container-type: normal; }
+  .demo-app #approval { position: absolute; inset: var(--header) 0 0 0; z-index: 50; padding: 8px; align-items: flex-end; }
+  .demo-app #approval .sheet {
+    max-height: 100%;
+    padding: 14px 18px;
+    box-shadow: 0 -10px 40px rgba(4, 25, 45, 0.45), 0 0 0 1px var(--aero-glass-edge);
+  }
+  .demo-app #approval .sheet > * { flex: none; }
+  .demo-app #approval h1 { font-size: 19px; }
+  .demo-app #approval .reason { flex: 0 1 auto; min-height: 1.5em; margin: 4px 0 6px; overflow-y: auto; font-size: 16px; }
+  .demo-app #approval .from { margin-bottom: 8px; }
+  .demo-app #approval .actions button { min-height: 36px; }
+}
+/* Short windows: smaller screens and no captions, so the conversation keeps some room. */
+@media (max-width: 999px) and (max-height: 720px) {
+  .demo-screen,
+  .demo-machine--laptop .demo-screen { height: min(21vh, calc((100vw - 36px) * 0.625)); }
+  .demo-machine figcaption { display: none; }
+}
+@media (max-width: 640px) {
+  .demo-bar { padding: 6px 12px; gap: 5px; }
+  .demo-bar__row { flex-wrap: wrap; gap: 6px 8px; }
+  .demo-pc__sub, .demo-bar--setup .demo-long { display: none; }
+  .demo-bar--setup .demo-short { display: inline; }
+  .demo-bar__text { font-size: 13px; }
+  .demo-bar__links { flex: 1 1 100%; flex-wrap: wrap; }
+  .demo-bar .demo-link { min-height: 28px; padding: 0 10px; font-size: 12px; }
+}
+/* Phones, and short windows: the examples scroll sideways in one row, and the keyboard hints under the
+ * box go (Esc still jumps to STOP). */
+@media (max-width: 640px), (max-width: 999px) and (max-height: 720px) {
+  .demo-app .hint { display: none; }
+  .demo-app .composer { padding-bottom: 8px; }
+  .demo-try { flex-wrap: nowrap; }
+  .demo-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 0 10px 2px 0;
+    scrollbar-width: thin;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+  }
+}
+/* A phone is narrower than Alfred's window ever is (440 px): its header drops the logo to keep the status. */
+@media (max-width: 440px) {
+  .demo-app .brand { display: none; }
+  .demo-app .tab, .demo-app .tab:hover, .demo-app .tab:active { padding: 0 7px; }
+  .demo-app .stop { padding: 0 12px; letter-spacing: 0.04em; }
+}
+/* The narrowest phones: everything in the header a little smaller, so the status isn't cut off. */
+@media (max-width: 380px) {
+  .demo-app .top { gap: 4px; padding: 0 6px; }
+  .demo-app .tab, .demo-app .tab:hover, .demo-app .tab:active { padding: 0 5px; font-size: 13px; }
+  .demo-app .pill { padding: 2px 7px; font-size: 11.5px; }
+  .demo-app .pill::before { margin-right: 4px; }
+  .demo-app .stop { padding: 0 10px; font-size: 14px; letter-spacing: 0.02em; }
+}
+
+/* Alfred's window is narrower beside the simulated PC than the screen it sits on: the same compact
+ * header and pages the app uses on a narrow screen (app.css, max-width: 720px). */
+@container (max-width: 860px) {
+  .demo-app #telegram { display: none; }
+}
+@container (max-width: 720px) {
+  .demo-app .top { gap: 6px; padding: 0 10px; }
+  .demo-app .brand span { display: none; }
+  .demo-app .tab, .demo-app .tab:hover, .demo-app .tab:active { padding: 0 8px; font-size: 14px; }
+  .demo-app .pill { padding: 3px 8px; font-size: 12px; }
+  .demo-app .stop { padding: 0 14px; font-size: 15px; }
+  .demo-app main { width: calc(100% - 16px); margin: 8px auto; }
+  .demo-app .page { padding: 16px 16px 32px; }
+  .demo-app .log { padding: 14px 14px 8px; }
+  .demo-app .composer { padding: 8px 14px 0; }
+  .demo-app .hint { padding: 0 14px; }
+  .demo-app .entry { max-width: 95%; }
+}
+
+/* --- the simulated Windows desktop (desktop.js) -------------------------------------------------------------------------- */
+.dk {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 800px;
+  height: 500px;
+  overflow: hidden;
+  transform-origin: 0 0;
+  color: var(--win-text);
+  font: 12px/1.35 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.dk--laptop { width: 640px; height: 400px; }
+.dk-wall { position: absolute; inset: 0; background: var(--wall); }
+.dk-wall--laptop { background: var(--wall-laptop); }
+.dk-icon svg, .dk-win-icon svg, .dk-task-btn svg, .dk-tray-icon svg, .fx-icon svg, .mp-btn svg, .mp-note svg,
+.dk-pointer svg, .dk-flyout-icon svg, .dk-toast-icon svg, .ol-chip-icon svg, .lp-logo svg { display: block; width: 100%; height: 100%; }
+
+.dk-desk-icons { position: absolute; left: 6px; top: 8px; display: grid; gap: 12px; }
+.dk-desk-icon {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  width: 66px;
+  color: #fff;
+  font-size: 10.5px;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+/* white labels need a dark backing to be read on the pale light-mode wallpaper */
+.dk-desk-label { padding: 0 4px; border-radius: 4px; background: rgba(8, 28, 56, 0.55); }
+.dk-desk-icon .dk-icon { width: 30px; height: 30px; }
+.dk-windows { position: absolute; inset: 0 0 40px 0; }
+.dk--laptop .dk-windows { bottom: 36px; }
+
+.dk-win {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--win-bg);
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+  box-shadow: var(--win-shadow);
+}
+.dk-win.is-opening { animation: dk-open 0.26s ease-out; }
+@keyframes dk-open { from { opacity: 0; transform: scale(0.94) translateY(10px); } }
+.dk-titlebar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding-left: 9px;
+  color: var(--win-muted);
+  font-size: 11.5px;
+}
+.dk-win.is-active { border-color: var(--win-accent); }
+.dk-win.is-active .dk-titlebar { color: var(--win-text); }
+.dk-win-icon { flex: none; width: 14px; height: 14px; }
+.dk-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dk-caps { display: flex; }
+.dk-caps span { width: 32px; font-size: 11px; text-align: center; }
+.dk-body { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--win-pane); }
+
+/* Notepad */
+.np-menu { display: flex; gap: 14px; padding: 3px 10px; border-bottom: 1px solid var(--win-line); background: var(--win-bg); font-size: 11.5px; }
+.np-text {
+  flex: 1;
+  overflow: hidden;
+  padding: 8px 10px;
+  font: 13px/1.45 "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.np-caret {
+  display: inline-block;
+  width: 1px;
+  height: 1.15em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--win-text);
+  animation: dk-blink 1s steps(1) infinite;
+}
+.np-status {
+  padding: 3px 10px;
+  border-top: 1px solid var(--win-line);
+  background: var(--win-bg);
+  color: var(--win-muted);
+  font-size: 10.5px;
+  white-space: pre;
+}
+@keyframes dk-blink { 50% { opacity: 0; } }
+
+/* Media Player */
+.dk-body--player { gap: 9px; padding: 12px 14px; background: linear-gradient(to bottom, var(--win-pane), var(--win-bg)); }
+.mp-top { display: flex; align-items: center; gap: 12px; }
+.mp-art {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #4facfe, #00d2fe 45%, #43e97b);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+.mp-note { width: 32px; height: 32px; }
+.mp-info { display: grid; gap: 1px; min-width: 0; }
+.mp-title { font-size: 15px; }
+.mp-artist { color: var(--win-muted); }
+.mp-eq { display: flex; align-items: flex-end; gap: 2px; height: 14px; margin-top: 4px; }
+.mp-eq i { width: 3px; height: 3px; border-radius: 1px; background: var(--win-accent); }
+.is-playing .mp-eq i { animation: dk-eq 0.8s ease-in-out infinite alternate; }
+.is-playing .mp-eq i:nth-child(2) { animation-delay: -0.3s; }
+.is-playing .mp-eq i:nth-child(3) { animation-delay: -0.55s; }
+.is-playing .mp-eq i:nth-child(4) { animation-delay: -0.15s; }
+.is-playing .mp-eq i:nth-child(5) { animation-delay: -0.45s; }
+@keyframes dk-eq { from { height: 3px; } to { height: 14px; } }
+.mp-time { display: flex; align-items: center; gap: 8px; color: var(--win-muted); font-size: 10.5px; }
+.mp-track { flex: 1; height: 4px; overflow: hidden; border-radius: 2px; background: var(--win-line); }
+.mp-fill { display: block; height: 100%; background: var(--win-accent); }
+.mp-controls { display: flex; align-items: center; justify-content: center; gap: 18px; }
+.mp-btn { width: 20px; height: 20px; color: var(--win-text); }
+.mp-btn--play { width: 34px; height: 34px; padding: 8px; border-radius: 50%; background: var(--win-accent); color: #fff; }
+
+/* File Explorer */
+.fx-address { padding: 4px 10px; border-bottom: 1px solid var(--win-line); background: var(--win-bg); font-size: 11px; white-space: pre; }
+.fx-main { flex: 1; min-height: 0; display: grid; grid-template-columns: 92px minmax(0, 1fr); }
+.fx-side { margin: 0; padding: 6px 0; border-right: 1px solid var(--win-line); background: var(--win-bg); font-size: 11px; list-style: none; }
+.fx-side li { padding: 3px 10px; }
+.fx-side .is-current { background: var(--win-select); }
+.fx-list { overflow: hidden; font-size: 11px; }
+.fx-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1.2fr) minmax(0, 0.6fr);
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+.fx-row > span { overflow: hidden; text-overflow: ellipsis; }
+.fx-head { border-bottom: 1px solid var(--win-line); color: var(--win-muted); }
+.fx-name { display: flex; align-items: center; gap: 6px; }
+.fx-icon { flex: none; width: 16px; height: 16px; }
+.fx-row.is-selected { background: var(--win-select); box-shadow: inset 0 0 0 1px var(--win-accent); }
+.fx-row.is-new { animation: dk-new 1.6s ease-out; }
+@keyframes dk-new { from { background: var(--demo-target); } }
+.fx-status { padding: 3px 10px; border-top: 1px solid var(--win-line); background: var(--win-bg); color: var(--win-muted); font-size: 10.5px; }
+
+/* Microsoft Edge with the sign-up form */
+.ed-tabs { padding: 3px 8px 0; background: var(--win-bg); }
+.ed-tab { display: inline-block; padding: 4px 14px; border-radius: 6px 6px 0 0; background: var(--win-pane); font-size: 11px; }
+.ed-address {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--win-line);
+  color: var(--win-muted);
+  font-size: 11px;
+}
+.ed-lock { color: #16a34a; font-size: 8px; }
+.ed-page { flex: 1; display: grid; place-items: center; background: var(--win-page); }
+.ed-form, .ed-done {
+  display: grid;
+  gap: 7px;
+  width: 280px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--win-pane);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+}
+.ed-form[hidden], .ed-done[hidden] { display: none; }
+.ed-h { font-size: 15px; }
+.ed-sub { margin-top: -5px; color: var(--win-muted); font-size: 11px; }
+.ed-field { display: grid; gap: 2px; }
+.ed-label { color: var(--win-muted); font-size: 10.5px; }
+.ed-input {
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid var(--win-field);
+  border-radius: 4px;
+  background: var(--win-pane);
+  font-size: 12px;
+}
+.ed-input.is-focused { border-color: var(--win-accent); box-shadow: inset 0 -2px 0 var(--win-accent); }
+.ed-select::after { content: "\25be"; float: right; color: var(--win-muted); }
+.ed-submit {
+  justify-self: start;
+  padding: 5px 18px;
+  border-radius: 4px;
+  background: #6d28d9;
+  color: #fff;
+  font-weight: 600;
+}
+.ed-submit.is-pressed { filter: brightness(0.85); transform: translateY(1px); }
+.ed-done { text-align: center; }
+.ed-done strong { color: #16a34a; font-size: 16px; }
+
+/* Outlook */
+.dk-body--outlook { flex-direction: row; }
+.ol-folders { flex: none; width: 104px; margin: 0; padding: 8px 0; border-right: 1px solid var(--win-line); background: var(--win-bg); font-size: 11px; list-style: none; }
+.ol-folders li { display: flex; justify-content: space-between; padding: 4px 10px; }
+.ol-folders .is-current { background: var(--win-select); font-weight: 600; }
+.ol-count { color: var(--win-accent); font-weight: 700; }
+.ol-list { flex: none; display: flex; flex-direction: column; gap: 2px; width: 196px; padding: 8px 0; overflow: hidden; border-right: 1px solid var(--win-line); }
+.ol-new { margin: 0 8px 6px; padding: 5px 10px; border-radius: 4px; background: var(--win-accent); color: #fff; font-weight: 600; text-align: center; }
+.ol-item { position: relative; display: grid; padding: 6px 10px; border-left: 3px solid transparent; font-size: 11px; }
+.ol-item.is-current { border-left-color: var(--win-accent); background: var(--win-select); }
+.ol-subject { font-weight: 600; }
+.ol-preview { overflow: hidden; color: var(--win-muted); white-space: nowrap; text-overflow: ellipsis; }
+.ol-time { position: absolute; right: 8px; top: 6px; color: var(--win-muted); font-size: 10px; }
+.ol-pane { flex: 1; min-width: 0; padding: 10px 12px; overflow: hidden; }
+.ol-read { display: grid; gap: 3px; }
+.ol-read[hidden], .ol-compose[hidden] { display: none; }
+.ol-read-subject { font-size: 14px; }
+.ol-read-from { color: var(--win-muted); font-size: 11px; }
+.ol-read-body { margin: 8px 0 0; font-size: 11.5px; white-space: pre-wrap; }
+.ol-compose { display: flex; flex-direction: column; gap: 4px; height: 100%; }
+.ol-compose-head { display: flex; gap: 8px; margin-bottom: 4px; }
+.ol-send { padding: 4px 16px; border-radius: 4px; background: var(--win-accent); color: #fff; font-weight: 600; }
+.ol-send.is-target { box-shadow: 0 0 0 3px var(--demo-target), 0 0 16px var(--demo-target); animation: dk-pulse 1s ease-in-out infinite; }
+.ol-send.is-sending { opacity: 0.55; }
+@keyframes dk-pulse { 50% { box-shadow: 0 0 0 5px var(--demo-target), 0 0 22px var(--demo-target); } }
+.ol-discard { padding: 4px 10px; border: 1px solid var(--win-line); border-radius: 4px; }
+.ol-field { display: flex; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--win-line); font-size: 11.5px; }
+.ol-label { flex: none; width: 52px; color: var(--win-muted); }
+.ol-value { flex: 1; min-height: 1.35em; }
+.ol-attach { display: flex; flex-wrap: wrap; gap: 6px; }
+.ol-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border: 1px solid var(--win-line); border-radius: 4px; font-size: 10.5px; white-space: pre; }
+.ol-chip-icon { width: 14px; height: 14px; }
+.ol-body { flex: 1; padding-top: 4px; font-size: 11.5px; white-space: pre-wrap; }
+.is-typing::after {
+  content: "";
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: currentColor;
+  animation: dk-blink 1s steps(1) infinite;
+}
+
+/* Task Manager */
+.tm-head { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--win-line); background: var(--win-bg); }
+.tm-stat { color: var(--win-muted); font-size: 11px; }
+.tm-rows { overflow: hidden; font-size: 11px; }
+.tm-row { display: grid; grid-template-columns: minmax(0, 1fr) 54px 76px; gap: 6px; padding: 4px 12px; border-bottom: 1px solid var(--win-line); }
+.tm-row span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tm-row span + span { text-align: right; }
+.tm-row--head { color: var(--win-muted); }
+
+/* the taskbar */
+.dk-taskbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  border-top: 1px solid var(--win-line);
+  background: var(--win-taskbar);
+}
+.dk--laptop .dk-taskbar { height: 36px; }
+.dk-task-apps { display: flex; gap: 4px; }
+.dk-task-btn { position: relative; display: block; width: 32px; height: 32px; padding: 7px; border-radius: 5px; }
+.dk-task-btn.is-active { background: var(--win-task-active); }
+.dk-task-btn.is-open::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 1px;
+  width: 6px;
+  height: 3px;
+  margin-left: -3px;
+  border-radius: 2px;
+  background: var(--win-muted);
+}
+.dk-task-btn.is-active::after { width: 14px; margin-left: -7px; background: var(--win-accent); }
+.dk-tray { position: absolute; right: 8px; top: 0; bottom: 0; display: flex; align-items: center; gap: 8px; }
+.dk-tray-icon { width: 15px; height: 15px; color: var(--win-text); }
+.dk-clock { display: grid; font-size: 10.5px; line-height: 1.25; text-align: right; }
+
+/* volume, notifications, screenshot flash, the target box and the pointer */
+.dk-flyout {
+  position: absolute;
+  left: 50%;
+  bottom: 52px;
+  z-index: 9500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 230px;
+  margin-left: -115px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--win-bg);
+  box-shadow: var(--win-shadow);
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.18s, transform 0.18s;
+  pointer-events: none;
+}
+.dk-flyout.is-shown { opacity: 1; transform: none; }
+.dk-flyout-icon { width: 18px; height: 18px; color: var(--win-text); }
+.dk-flyout-track { flex: 1; height: 4px; overflow: hidden; border-radius: 2px; background: var(--win-line); }
+.dk-flyout-fill { display: block; height: 100%; background: var(--win-accent); transition: width 0.25s; }
+.dk-flyout-text { width: 40px; font-weight: 600; text-align: right; }
+.dk-toasts { position: absolute; right: 10px; bottom: 50px; z-index: 9500; display: grid; gap: 8px; width: 250px; pointer-events: none; }
+.dk--laptop .dk-toasts { bottom: 44px; }
+.dk-toast {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--win-bg);
+  box-shadow: var(--win-shadow);
+  font-size: 11.5px;
+  animation: dk-toast 0.3s ease-out;
+  transition: opacity 0.3s, transform 0.3s;
+}
+.dk-toast.is-leaving { opacity: 0; transform: translateX(24px); }
+@keyframes dk-toast { from { opacity: 0; transform: translateX(24px); } }
+.dk-toast-head { display: flex; align-items: center; gap: 6px; }
+.dk-toast-icon { width: 16px; height: 16px; }
+.dk-flash { position: absolute; inset: 0; z-index: 9800; background: #fff; opacity: 0; pointer-events: none; }
+.dk-flash.is-flashing { animation: dk-flash 0.45s ease-out; }
+@keyframes dk-flash { from { opacity: 0.7; } to { opacity: 0; } }
+.dk-box {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 9600;
+  width: 140px;
+  height: 32px;
+  border: 2px dashed var(--demo-target);
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.dk-box.is-shown { opacity: 1; }
+.dk-box-label {
+  position: absolute;
+  left: -2px;
+  top: -19px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--demo-target);
+  color: #1b1200;
+  font: 600 10px/1.5 "Cascadia Mono", Consolas, monospace;
+  white-space: nowrap;
+}
+.dk-ripple {
+  position: absolute;
+  left: -14px;
+  top: -14px;
+  z-index: 9650;
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--demo-target);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+.dk-ripple.is-clicking { animation: dk-ripple 0.5s ease-out; }
+@keyframes dk-ripple { from { opacity: 1; scale: 0.4; } to { opacity: 0; scale: 1.6; } }
+.dk-pointer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 9700;
+  width: 18px;
+  height: 22px;
+  opacity: 0;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.4));
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.dk-pointer.is-shown { opacity: 1; }
+.dk--laptop .dk-pointer { transition: opacity 0.2s, transform 0.9s ease-in-out; }
+
+/* Alfred's approval on the laptop: the same words and buttons as the Alfred window there */
+.lp-ask { position: absolute; inset: 0 0 36px 0; z-index: 8000; display: grid; place-items: center; background: rgba(0, 0, 0, 0.3); }
+.lp-ask[hidden] { display: none; }
+.lp-sheet {
+  display: grid;
+  gap: 6px;
+  width: 340px;
+  padding: 14px 16px;
+  border-top: 5px solid var(--aero-note-warn-border);
+  border-radius: 12px;
+  background: var(--aero-glass-strong);
+  box-shadow: var(--aero-shadow);
+  color: var(--aero-text);
+  font: 12px/1.4 var(--aero-font);
+}
+.lp-brand { display: flex; align-items: center; gap: 6px; color: var(--aero-text-muted); font-size: 11px; }
+.lp-logo { width: 16px; height: 16px; }
+.lp-h { font: 600 15px/1.2 var(--aero-font-display); }
+.lp-reason { margin: 0; font-size: 12.5px; font-weight: 600; overflow-wrap: anywhere; }
+.lp-from { margin: 0; color: var(--aero-text-muted); font-size: 11px; }
+.lp-countdown { height: 5px; overflow: hidden; border-radius: 3px; background: var(--aero-track); }
+.lp-bar { height: 100%; width: 100%; background: linear-gradient(to bottom, #ffd36e, #e0960c); }
+.lp-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.dk .lp-btn {
+  min-width: 70px;
+  min-height: 26px;
+  padding: 0 14px;
+  border: 1px solid var(--aero-button-border);
+  border-radius: var(--aero-radius-pill);
+  background: var(--aero-shine), linear-gradient(to bottom, var(--aero-button-top), var(--aero-button-bottom));
+  color: var(--aero-button-text);
+  font: 600 12px/1 var(--aero-font);
+  cursor: pointer;
+}
+.dk .lp-btn--allow {
+  border-color: var(--aero-primary-border);
+  background: var(--aero-shine), linear-gradient(to bottom, var(--aero-primary-top), var(--aero-primary-bottom));
+  color: #fff;
+}
+.dk .lp-btn.is-pressed { box-shadow: 0 0 0 3px var(--aero-glow); transform: translateY(1px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-root *, .demo-root *::before, .demo-root *::after, .dk *, .dk *::before, .dk *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
