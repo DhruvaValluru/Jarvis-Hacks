@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/alfred-logo.png" alt="Alfred AI: every device, one butler." width="560"></p>
+
 # Jarvis-Hacks
 
 An Iron Man–style "Jarvis": a voice-controlled assistant that sees and acts across all of your devices.

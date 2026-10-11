@@ -56,7 +56,7 @@ NEEDS_WEBVIEW2 = ("webview.platforms.winforms",)
 # (package, file inside it): data files and DLLs that are loaded by path, not imported.
 FILES = (
     ("jarvis.app", "ui/index.html"), ("jarvis.app", "ui/app.js"), ("jarvis.app", "ui/app.css"),
-    ("jarvis.app", "ui/icon.svg"),
+    ("jarvis.app", "ui/logo.png"),
 )
 WINDOWS_FILES = (
     ("faster_whisper", "assets/*.onnx"),  # the voice activity model

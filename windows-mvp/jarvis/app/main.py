@@ -365,8 +365,16 @@ STATE_LABELS = {"off": "off", "needs_consent": "needs your OK", "starting": "sta
                 "busy": "working", "stopping": "stopping", "crashed": "crashed"}
 
 
-def tray_image(Image, ImageDraw):
-    """Alfred's tray icon, like the app's: a white "A" on a glossy sky-blue disc."""
+LOGO = Path(__file__).resolve().parent / "ui" / "logo.png"
+
+
+def tray_image(Image, ImageDraw, logo=LOGO):
+    """Alfred's tray icon: the logo (ui/logo.png), or a glossy sky-blue disc if that can't be read."""
+    try:
+        with Image.open(logo) as img:
+            return img.convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS)
+    except (OSError, ValueError):
+        pass
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     sky = Image.linear_gradient("L").resize((64, 64))
     disc = Image.new("L", (64, 64), 0)

@@ -698,3 +698,14 @@ def test_app_without_window_runs_shows_and_quits(env, monkeypatch):
     assert not (config.data_dir() / "run" / "alfred.json").exists()
     with pytest.raises(OSError):
         http.client.HTTPConnection("127.0.0.1", port, timeout=2).request("GET", "/api/health")
+
+
+def test_tray_icon_is_the_logo_and_survives_a_missing_file(tmp_path):
+    from PIL import Image, ImageDraw
+
+    logo = app_main.tray_image(Image, ImageDraw)
+    assert logo.size == (64, 64) and logo.mode == "RGBA"
+    assert logo.getpixel((0, 0))[3] == 0 and logo.getpixel((32, 32))[3] == 255  # round, on a clear background
+    assert app_main.LOGO.is_file() and (UI_DIR / "logo.png").is_file()
+    fallback = app_main.tray_image(Image, ImageDraw, logo=tmp_path / "missing.png")
+    assert fallback.size == (64, 64) and fallback.getpixel((32, 32))[3] == 255

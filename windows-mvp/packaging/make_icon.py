@@ -1,22 +1,21 @@
-"""Draw Alfred's icon and installer art in code (Pillow), so the repo needs no binary images.
+"""Make Alfred's icon and installer art (Pillow) from the logo the app itself shows.
 
   python packaging/make_icon.py build      writes build/alfred.ico, alfred.png and the installer's
                                            wizard images (wizard-*.bmp)
 
-The icon is a glossy sky-blue disc with a white "A" (the Frutiger Aero look of the app's window).
+The icon is Alfred's logo, jarvis/app/ui/logo.png: a glossy blue sphere with a white bow tie (the Frutiger
+Aero look of the app's window). The installer's side panel is drawn here, around it.
 packaging/build.ps1 runs this before PyInstaller (exe icons) and Inno Setup (installer art).
 """
 
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
 ICO_SIZES = (16, 20, 24, 32, 40, 48, 64, 96, 128, 256)
-SKY_TOP, SKY_BOTTOM = (156, 222, 255), (16, 108, 210)
-RIM = (10, 72, 150)
+LOGO = Path(__file__).resolve().parent.parent / "jarvis" / "app" / "ui" / "logo.png"
 WHITE = (255, 255, 255)
-SCALE = 4  # draw big, then scale down: smooth edges without anti-aliasing support in ImageDraw
 
 
 def _vertical(size, top, bottom) -> Image.Image:
@@ -24,12 +23,6 @@ def _vertical(size, top, bottom) -> Image.Image:
     w, h = size
     fade = Image.linear_gradient("L").resize((w, h))
     return Image.composite(Image.new("RGB", (w, h), bottom), Image.new("RGB", (w, h), top), fade)
-
-
-def _ellipse_mask(size, box, blur=0.0) -> Image.Image:
-    mask = Image.new("L", size, 0)
-    ImageDraw.Draw(mask).ellipse(box, fill=255)
-    return mask.filter(ImageFilter.GaussianBlur(blur)) if blur else mask
 
 
 def _overlay(canvas: Image.Image, color, mask: Image.Image) -> None:
@@ -40,57 +33,19 @@ def _overlay(canvas: Image.Image, color, mask: Image.Image) -> None:
 
 
 def draw_icon(size: int = 256) -> Image.Image:
-    """The app icon, RGBA, `size` x `size`."""
-    s = size * SCALE
-    canvas = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    m = s * 0.06  # room for the soft shadow
-    disc = (m, m * 0.7, s - m, s - m * 1.3)
-
-    # A soft shadow under the disc.
-    shadow = _ellipse_mask((s, s), (disc[0], disc[1] + s * 0.025, disc[2], disc[3] + s * 0.035), blur=s * 0.02)
-    _overlay(canvas, (6, 40, 90, 110), shadow)
-
-    # The sky-blue disc with a darker rim.
-    body = _vertical((s, s), SKY_TOP, SKY_BOTTOM).convert("RGBA")
-    rim_mask = _ellipse_mask((s, s), disc)
-    canvas.paste(Image.new("RGBA", (s, s), RIM + (255,)), (0, 0), rim_mask)
-    inset = s * 0.018
-    inner = (disc[0] + inset, disc[1] + inset, disc[2] - inset, disc[3] - inset)
-    inner_mask = _ellipse_mask((s, s), inner)
-    canvas.paste(body, (0, 0), inner_mask)
-
-    # Light coming up from the bottom edge (Aero's inner glow).
-    glow = _ellipse_mask((s, s), (s * 0.2, s * 0.55, s * 0.8, s * 1.0), blur=s * 0.06)
-    glow = ImageChops.multiply(glow, inner_mask)
-    _overlay(canvas, (170, 245, 255, 120), glow)
-
-    # The white "A", with a soft blue shadow so it reads on the light top of the disc.
-    letter = Image.new("L", (s, s), 0)
-    pen = ImageDraw.Draw(letter)
-    width = round(s * 0.105)
-    apex, left, right = (s * 0.5, s * 0.26), (s * 0.29, s * 0.76), (s * 0.71, s * 0.76)
-    pen.line([left, apex, right], fill=255, width=width, joint="curve")
-    bar_y = s * 0.585
-    pen.line([(s * 0.375, bar_y), (s * 0.625, bar_y)], fill=255, width=round(width * 0.8))
-    letter_shadow = letter.filter(ImageFilter.GaussianBlur(s * 0.012))
-    _overlay(canvas, (4, 50, 120, 140), ImageChops.offset(letter_shadow, 0, round(s * 0.012)))
-    _overlay(canvas, WHITE + (255,), letter)
-
-    # The gloss: a bright cap over the top half that fades out towards the middle.
-    gloss_box = (disc[0] + s * 0.07, disc[1] + s * 0.02, disc[2] - s * 0.07, s * 0.56)
-    gloss_mask = _ellipse_mask((s, s), gloss_box)
-    fade = Image.linear_gradient("L").resize((s, s)).point(lambda v: max(0, 175 - v * 1.6))
-    gloss = ImageChops.multiply(ImageChops.multiply(gloss_mask, fade), inner_mask)
-    _overlay(canvas, WHITE + (255,), gloss)
-
-    return canvas.resize((size, size), Image.Resampling.LANCZOS)
+    """The app icon, RGBA, `size` x `size`: Alfred's logo (the app's own jarvis/app/ui/logo.png)."""
+    with Image.open(LOGO) as logo:
+        icon = logo.convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
+    if size <= 48:  # the bow tie and dots stay crisp at taskbar and title-bar sizes
+        icon = icon.filter(ImageFilter.UnsharpMask(radius=1, percent=60, threshold=2))
+    return icon
 
 
 def write_ico(path: Path) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     big = draw_icon(256)
-    sharp = [draw_icon(n) for n in ICO_SIZES if n < 256]  # each size drawn on its own, not shrunk from 256
+    sharp = [draw_icon(n) for n in ICO_SIZES if n < 256]  # each size made from the full logo, not from 256
     big.save(path, format="ICO", sizes=[(n, n) for n in ICO_SIZES], append_images=sharp)
     return path
 
