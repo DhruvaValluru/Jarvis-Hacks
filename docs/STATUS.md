@@ -1,18 +1,13 @@
 # Live task board
 
-_Auto-generated 2026-10-11 04:59 UTC from [TASKS.md](TASKS.md), open PRs and branches. Do not edit; changes are overwritten._
+_Auto-generated 2026-10-11 12:30 UTC from [TASKS.md](TASKS.md), open PRs and branches. Do not edit; changes are overwritten._
 
-**Progress:** 22 of 85 tasks done.
+**Progress:** 32 of 102 tasks done.
 
 ## In progress (claimed)
 
 | Task | Title | Claimed by |
 |---|---|---|
-| **0.7** | PR #6 (browser voice mode on OpenAI's live voice model, `jarvisvoice`): decide how it relates to area D (local voice) and E3 (voice service). Then give it a task ID, merge `main`, and add its tests to `test.bat`, or keep it as a separate app. | PR #10 (DhruvaValluru, `claude/funny-tesla-rxt8yr`) |
-| **0.8** | PR #7 (multi-PC control, peer-to-peer tool calls): reconcile with the hub/worker design in `docs/ARCHITECTURE.md` section 3.6 (tasks I1–I6) before merging. Decide: peer-to-peer now and the hub later, or the hub only. Then give it a task ID and merge `main`. | PR #10 (DhruvaValluru, `claude/funny-tesla-rxt8yr`) |
-| **I4** | Handoff: "send this tab/file/clipboard to my laptop". | PR #9 (DhruvaValluru, `communications`, draft) |
-| **I5** | "What's my desktop doing?" from another PC. | PR #9 (DhruvaValluru, `communications`, draft) |
-| **K1** | One-click installer (MSIX or Inno Setup) bundling Python and the lock file; auto-start at login. | PR #10 (DhruvaValluru, `claude/funny-tesla-rxt8yr`) |
 
 ## Ready to start (open, unclaimed, dependencies done)
 
@@ -21,6 +16,7 @@ First 3 per area. Take the lowest number in your area.
 
 **0. Integration (do these first; they unblock everyone)**
 
+- **0.8** PR #7 (multi-PC control, peer-to-peer tool calls): reconcile with the hub/worker design in `docs/ARCHITECTURE.md` section 3.6 (tasks I1–I6) before merging. Decide: peer-to-peer now and the hub later, or the hub only. Then give it a task ID and merge `main`.
 - **0.9** The assistant's name is **Alfred**. *Done:* what users see (Claude's self-name, console text, Telegram, data notice, MVP README; the wake word accepts "Alfred" and "Jarvis"). *Open:* decide whether to also rename code, scripts and the repo (`jarvis.bat`, `python -m jarvis`); that breaks every open branch, so do it only at a quiet moment.
 - **0.6** Delete the stale branches `mvp` and `claude/sharp-bohr-sglils` (already merged). Ask the repo owner first.
 
@@ -76,11 +72,13 @@ First 3 per area. Take the lowest number in your area.
 
 - **I1** Pick the hub host (our FastAPI hub or Claude Managed Agents) per `docs/ARCHITECTURE.md` section 3.6, and write the job protocol (job, result, heartbeat) between hub and PC workers.
 - **I2** Pairing with a QR code and per-device keys; transport over Tailscale or WebSocket with TLS.
+- **I7** Tab handoff: "send this tab to my laptop" (needs the browser extension, or reading the URL bar through UI Automation).
 
 **K. Packaging and deployment**
 
 - **K2** Tray icon with status, mute, settings and Stop.
 - **K3** Code signing plan (certificate, SmartScreen).
+- **K6** Package `alfred-cli.exe --engine` (what `service.engine_command()` starts when frozen) and the Telegram bridge with its own `node.exe` (`service.bridge_command()`); first run imports an old `windows-mvp\.env` with `Store.import_legacy_env` and records consent with `consent.record("app")`.
 
 **L. Later phases (see README section 8)**
 
@@ -100,8 +98,8 @@ First 3 per area. Take the lowest number in your area.
 - **I3** waits on I1
 - **J1** waits on H2
 - **J2** waits on I2
+- **K14** waits on M4
 
 ## Needs attention
 
-- PR #7 "Let one Jarvis control your other PCs" on `claude/zealous-ramanujan-1tzfmr`: add a task ID like `[C6]` to the title
-- PR #6 "Add Jarvis voice: talk to Jarvis like ChatGPT voice mode" on `jarvisvoice`: add a task ID like `[C6]` to the title
+- nothing
