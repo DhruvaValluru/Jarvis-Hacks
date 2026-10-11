@@ -79,12 +79,25 @@ Step 'Uninstall silently'
 $uninstaller = Join-Path $InstallDir 'unins000.exe'
 $arguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="{0}"' -f $uninstallLog
 $process = Start-Process -FilePath $uninstaller -ArgumentList $arguments -Wait -PassThru
-Write-Host "Uninstaller exit code $($process.ExitCode)"
-# The uninstaller hands over to a copy of itself in %TEMP%, so wait for the files to go.
+$exitCode = $process.ExitCode
+Write-Host "Uninstaller exit code: $(if ($null -eq $exitCode) { 'none reported' } else { $exitCode })"
+# unins000.exe hands over to a copy of itself in %TEMP%, which does the work, writes the log and then
+# removes unins000.exe. Its log is what says how it went: wait for the copy to close it.
+function Test-UninstallDone {
+  (-not (Test-Path $uninstaller)) -and (Test-Path $uninstallLog) -and
+    [bool](Select-String -Path $uninstallLog -SimpleMatch 'Log closed.' -Quiet)
+}
 $deadline = (Get-Date).AddMinutes(3)
-while ((Test-Path $uninstaller) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
-if ((Test-Path $uninstaller) -or $process.ExitCode -ne 0) { Show-Log $uninstallLog; throw 'The uninstaller did not finish.' }
-Show-Log $uninstallLog
+while (-not (Test-UninstallDone) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+$succeeded = (Test-Path $uninstallLog) -and
+  [bool](Select-String -Path $uninstallLog -SimpleMatch 'Uninstallation process succeeded.' -Quiet)
+if (-not (Test-UninstallDone) -or -not $succeeded) {
+  Show-Log $uninstallLog
+  throw "The uninstaller did not finish (unins000.exe still there: $(Test-Path $uninstaller); log says it succeeded: $succeeded)."
+}
+Write-Host '[ok] the uninstaller says: Uninstallation process succeeded.'
+# Only the first half of the uninstaller exits on its own; the exit code it leaves isn't the uninstall's result.
+if ($exitCode -ne 0) { Write-Host "    (unins000.exe's own exit code was $exitCode; the log above is the result.)" }
 
 Assert (-not (Test-Path (Join-Path $InstallDir 'Alfred.exe'))) 'Alfred.exe removed'
 Assert (-not (Test-Path (Join-Path $InstallDir '_internal'))) '_internal removed'
