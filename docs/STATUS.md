@@ -1,6 +1,6 @@
 # Live task board
 
-_Auto-generated 2026-10-11 00:33 UTC from [TASKS.md](TASKS.md), open PRs and branches. Do not edit; changes are overwritten._
+_Auto-generated 2026-10-11 04:59 UTC from [TASKS.md](TASKS.md), open PRs and branches. Do not edit; changes are overwritten._
 
 **Progress:** 22 of 85 tasks done.
 
@@ -8,11 +8,11 @@ _Auto-generated 2026-10-11 00:33 UTC from [TASKS.md](TASKS.md), open PRs and bra
 
 | Task | Title | Claimed by |
 |---|---|---|
-| **0.7** | PR #6 (browser voice mode on OpenAI's live voice model, `jarvisvoice`): decide how it relates to area D (local voice) and E3 (voice service). Then give it a task ID, merge `main`, and add its tests to `test.bat`, or keep it as a separate app. | PR #10 (DhruvaValluru, `claude/funny-tesla-rxt8yr`, draft) |
-| **0.8** | PR #7 (multi-PC control, peer-to-peer tool calls): reconcile with the hub/worker design in `docs/ARCHITECTURE.md` section 3.6 (tasks I1–I6) before merging. Decide: peer-to-peer now and the hub later, or the hub only. Then give it a task ID and merge `main`. | PR #10 (DhruvaValluru, `claude/funny-tesla-rxt8yr`, draft) |
+| **0.7** | PR #6 (browser voice mode on OpenAI's live voice model, `jarvisvoice`): decide how it relates to area D (local voice) and E3 (voice service). Then give it a task ID, merge `main`, and add its tests to `test.bat`, or keep it as a separate app. | PR #10 (DhruvaValluru, `claude/funny-tesla-rxt8yr`) |
+| **0.8** | PR #7 (multi-PC control, peer-to-peer tool calls): reconcile with the hub/worker design in `docs/ARCHITECTURE.md` section 3.6 (tasks I1–I6) before merging. Decide: peer-to-peer now and the hub later, or the hub only. Then give it a task ID and merge `main`. | PR #10 (DhruvaValluru, `claude/funny-tesla-rxt8yr`) |
 | **I4** | Handoff: "send this tab/file/clipboard to my laptop". | PR #9 (DhruvaValluru, `communications`, draft) |
 | **I5** | "What's my desktop doing?" from another PC. | PR #9 (DhruvaValluru, `communications`, draft) |
-| **K1** | One-click installer (MSIX or Inno Setup) bundling Python and the lock file; auto-start at login. | PR #10 (DhruvaValluru, `claude/funny-tesla-rxt8yr`, draft) |
+| **K1** | One-click installer (MSIX or Inno Setup) bundling Python and the lock file; auto-start at login. | PR #10 (DhruvaValluru, `claude/funny-tesla-rxt8yr`) |
 
 ## Ready to start (open, unclaimed, dependencies done)
 
