@@ -13,7 +13,7 @@ Many people and many agents work on different branches. A test result only means
 | Settings | model `claude-opus-5-5`, effort `low`, speech model `base.en`, fallbacks on, speech off, computer use on, 40 max steps | `test.bat`, `jarvis/doctor.py` (`TEST_PROFILE`) |
 | Tests | unit (everything in `tests\`), Windows smoke, offline voice, Telegram bridge (Node), app self-test | `test.bat` |
 
-`python -m jarvis --doctor` (also run by `setup.bat` and `test.bat`) checks all of this and prints a **fingerprint**. Two machines with the same fingerprint have the same Python minor version, package versions and settings. CI prints the reference fingerprint in its log. **Current reference (spec v3): `06a1e0c4e8cb`**; confirm it against the `windows-mvp` CI log (the `--doctor` line of `setup.bat /ci`).
+`python -m jarvis --doctor` (also run by `setup.bat` and `test.bat`) checks all of this and prints a **fingerprint**. Two machines with the same fingerprint have the same Python minor version, package versions and settings. CI prints the reference fingerprint in its log. **Current reference (spec v3): `06a1e0c4e8cb`** (`jarvis.doctor.reference_fingerprint()`; the `windows-mvp` CI job matched the spec on `db1beed`).
 
 ## How to test (everyone, every branch)
 
