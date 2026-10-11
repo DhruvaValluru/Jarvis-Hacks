@@ -365,13 +365,21 @@ STATE_LABELS = {"off": "off", "needs_consent": "needs your OK", "starting": "sta
 
 
 def tray_image(Image, ImageDraw):
-    """Alfred's tray icon: a light "A" on a dark disc."""
+    """Alfred's tray icon, like the app's: a white "A" on a glossy sky-blue disc."""
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    sky = Image.linear_gradient("L").resize((64, 64))
+    disc = Image.new("L", (64, 64), 0)
+    ImageDraw.Draw(disc).ellipse((2, 2, 61, 61), fill=255)
+    img.paste(Image.composite(Image.new("RGBA", (64, 64), (16, 108, 210, 255)),
+                              Image.new("RGBA", (64, 64), (156, 222, 255, 255)), sky), (0, 0), disc)
+    gloss = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    ImageDraw.Draw(gloss).ellipse((11, 5, 53, 30), fill=(255, 255, 255, 90))
+    img.alpha_composite(gloss)
     draw = ImageDraw.Draw(img)
-    draw.ellipse((2, 2, 62, 62), fill=(24, 30, 42, 255), outline=(232, 178, 74, 255), width=3)
-    gold = (240, 226, 196, 255)
-    draw.line((18, 50, 32, 13, 46, 50), fill=gold, width=6, joint="curve")
-    draw.line((24, 37, 40, 37), fill=gold, width=5)
+    draw.ellipse((2, 2, 61, 61), outline=(10, 72, 150, 255), width=2)
+    white = (255, 255, 255, 255)
+    draw.line((19, 49, 32, 14, 45, 49), fill=white, width=6, joint="curve")
+    draw.line((25, 37, 39, 37), fill=white, width=5)
     return img
 
 
