@@ -11,7 +11,7 @@ import time
 
 from . import config
 
-TERMS_VERSION = "2026-10-10"
+TERMS_VERSION = "2026-10-11"
 
 NOTICE = """\
 ================ Alfred: what it does and where your data goes ================
@@ -25,11 +25,13 @@ Your data goes to:
    documents, and screenshots of your screen when it uses computer use or you
    ask it to look.
  - OpenAI, only if OPENAI_API_KEY is set: Telegram voice notes (to transcribe
-   them) and reply text (to make spoken replies).
+   them) and reply text (to make spoken replies). In the app's voice mode, and
+   only while it is on: your microphone audio and Alfred's replies.
  - Telegram and Photon Spectrum, only if you set up Telegram: your messages and
    Alfred's replies pass through their servers.
-Stays on this PC: microphone audio (speech is recognised locally), the spoken
-voice, and the action log at %LOCALAPPDATA%\\Jarvis\\audit.jsonl.
+Stays on this PC: microphone audio outside voice mode (speech is recognised
+locally), the spoken voice, and the action log at
+%LOCALAPPDATA%\\Jarvis\\audit.jsonl.
 
 Stop it any time: Ctrl+C, move the mouse to the top-left corner, or send /stop
 in Telegram. Full notice: windows-mvp\\PRIVACY.md (version {version}).
@@ -49,11 +51,22 @@ def accepted() -> bool:
         return False
 
 
-def record() -> None:
+def record(source: str = "app") -> None:
+    """Store that the current notice was accepted, and where (the app, the console, setup)."""
     _path().write_text(
-        json.dumps({"version": TERMS_VERSION, "accepted_at": time.strftime("%Y-%m-%dT%H:%M:%S")}),
+        json.dumps({"version": TERMS_VERSION, "accepted_at": time.strftime("%Y-%m-%dT%H:%M:%S"), "source": source}),
         encoding="utf-8",
     )
+
+
+def notice_markdown() -> str:
+    """The full notice (PRIVACY.md) for the app to show; the short console NOTICE if it's missing."""
+    for folder in (config.MVP_DIR, config.app_dir()):
+        try:
+            return (folder / "PRIVACY.md").read_text(encoding="utf-8")
+        except OSError:
+            continue
+    return NOTICE.format(version=TERMS_VERSION)
 
 
 def ensure(interactive: bool) -> bool:
@@ -68,7 +81,7 @@ def ensure(interactive: bool) -> bool:
     except EOFError:
         return False
     if answer.strip().lower() == "agree":
-        record()
+        record("console")
         print("Thanks. You can read the full notice again in windows-mvp\\PRIVACY.md.")
         return True
     print("Not accepted. Alfred won't run until you accept (run jarvis.bat --terms).")

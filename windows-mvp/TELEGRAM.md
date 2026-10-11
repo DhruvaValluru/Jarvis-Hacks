@@ -88,6 +88,15 @@ when Alfred is ready again (a few seconds). Pending approvals and queued command
 are dropped and the conversation is reset. `/stop` must be typed; it is logged
 in the PC's audit log as `telegram_stop`.
 
+## In the Alfred desktop app
+
+The app runs the same bridge in parent mode (`ALFRED_BRIDGE_MODE=parent`): it
+passes the Telegram settings from Alfred settings, the bridge reads no `.env` and
+starts no Python, and Telegram commands run on the app's one engine with the
+desktop's commands (`jarvis/service/bridge.py`). Replies and approval requests
+for Telegram's commands go back to Telegram, and `/stop` stops the app's engine.
+`jarvis-telegram.bat` works as before.
+
 ## Privacy
 
 `/start` and `/privacy` show where your data goes: messages pass through

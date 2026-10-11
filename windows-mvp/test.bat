@@ -11,21 +11,23 @@ set JARVIS_FALLBACKS=1
 set JARVIS_SPEAK=0
 set JARVIS_COMPUTER_USE=1
 set JARVIS_MAX_STEPS=40
+rem Tests never read this PC's saved Alfred settings or Credential Manager secrets.
+set JARVIS_IGNORE_USER_SETTINGS=1
 set FAILED=0
 
-echo === 1/5 Environment check ===
+echo === 1/6 Environment check ===
 %PY% -m jarvis --doctor || ( echo Your setup does not match the spec. Run setup.bat, then test again. & exit /b 1 )
 echo.
-echo === 2/5 Unit tests (core, computer use, Telegram worker) ===
-%PY% -m pytest -q tests\test_core.py tests\test_telegram.py || set FAILED=1
+echo === 2/6 Unit tests (everything in tests\: core, computer use, Telegram worker, multi-PC, settings, app) ===
+%PY% -m pytest -q tests || set FAILED=1
 echo.
-echo === 3/5 Windows smoke test (Notepad via UI Automation) ===
+echo === 3/6 Windows smoke test (Notepad via UI Automation) ===
 %PY% tests\smoke_windows.py || set FAILED=1
 echo.
-echo === 4/5 Voice pipeline (offline) ===
+echo === 4/6 Voice pipeline (offline) ===
 %PY% tests\voice_pipeline.py || set FAILED=1
 echo.
-echo === 5/5 Telegram bridge (Node) ===
+echo === 5/6 Telegram bridge (Node) ===
 if exist telegram\node_modules (
   pushd telegram
   call npm test || set FAILED=1
@@ -33,6 +35,9 @@ if exist telegram\node_modules (
 ) else (
   echo SKIPPED: run setup-telegram.bat to include it. CI always runs it.
 )
+echo.
+echo === 6/6 App self-test (imports, bundled files, engine start, Stop; nothing on the PC changes) ===
+%PY% -m jarvis.selftest || set FAILED=1
 echo.
 if "%FAILED%"=="1" ( echo RESULT: FAILED & exit /b 1 )
 echo RESULT: ALL PASSED

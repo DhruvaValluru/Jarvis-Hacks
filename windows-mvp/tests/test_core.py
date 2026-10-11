@@ -88,6 +88,29 @@ def test_spec_lock_is_exact():
     assert all(v and v[0].isdigit() for v in pins.values())
 
 
+def test_testing_md_quotes_the_reference_fingerprint(monkeypatch):
+    """TESTING.md gives the fingerprint a machine on the spec prints, so anyone can compare without CI."""
+    import importlib.metadata as md
+    import re
+
+    from jarvis import config, doctor
+
+    text = (config.MVP_DIR / "TESTING.md").read_text(encoding="utf-8")
+    quoted = re.search(r"Current reference \(spec v(\d+)\): `([0-9a-f]{12})`", text)
+    assert quoted, "TESTING.md must quote the current reference fingerprint"
+    assert quoted[1] == doctor.SPEC_VERSION and quoted[2] == doctor.reference_fingerprint()
+
+    # ... and it's what --doctor prints on a machine that matches the lock file, the profile and Node.
+    dists = [SimpleNamespace(metadata={"Name": name}, version=ver) for name, ver in doctor.lock_pins().items()]
+    monkeypatch.setattr(md, "distributions", lambda: dists)
+    monkeypatch.setattr(doctor, "sys", SimpleNamespace(version_info=(*doctor.PYTHON, 10)))
+    monkeypatch.setattr(doctor, "_node_major", lambda: doctor.NODE_MAJOR)
+    for key in doctor.TEST_PROFILE:
+        monkeypatch.delenv(key, raising=False)
+    _, lines = doctor.check()
+    assert lines[-1].startswith(f"SPEC v{doctor.SPEC_VERSION} fingerprint {doctor.reference_fingerprint()} -> ")
+
+
 class FakeScreen:
     """Stands in for the Windows backend: records input instead of sending it."""
 
@@ -290,3 +313,27 @@ if __name__ == "__main__":
         if name.startswith("test_"):
             fn()
             print("ok", name)
+
+
+def test_audit_lines_stay_whole_when_threads_write_at_once(tmp_path, monkeypatch):
+    """Windows appends by seeking to the end and then writing, so unguarded writers overwrite each other."""
+    import json
+    import threading
+
+    from jarvis import config
+
+    monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
+    start = threading.Barrier(8)
+
+    def write(n):
+        start.wait()
+        for i in range(50):
+            registry.audit(f"tool{n}", {"i": i, "pad": "x" * (n * 97)}, True, "done " * n)
+
+    threads = [threading.Thread(target=write, args=(n,)) for n in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    lines = (tmp_path / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 400 and all(json.loads(line)["ok"] for line in lines)

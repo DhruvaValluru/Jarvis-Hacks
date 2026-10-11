@@ -1,16 +1,16 @@
 import { Spectrum, voice } from 'spectrum-ts';
 import { telegram } from 'spectrum-ts/providers/telegram';
 
-export function spectrumOptions(env) {
+export function spectrumOptions(env, where = 'windows-mvp/.env') {
   for (const key of ['SPECTRUM_PROJECT_ID', 'SPECTRUM_PROJECT_SECRET', 'TELEGRAM_BOT_TOKEN']) {
-    if (!env[key]) throw new Error(`Set ${key} in windows-mvp/.env.`);
+    if (!env[key]) throw new Error(`Set ${key} in ${where}.`);
   }
   return { projectId: env.SPECTRUM_PROJECT_ID, projectSecret: env.SPECTRUM_PROJECT_SECRET,
     providers: [telegram.config({ botToken: env.TELEGRAM_BOT_TOKEN })],
     telemetry: false, options: { logLevel: 'error' } };
 }
-export async function connectSpectrum(env) {
-  return Spectrum(spectrumOptions(env));
+export async function connectSpectrum(env, where) {
+  return Spectrum(spectrumOptions(env, where));
 }
 
 // A positive Telegram chat id equal to the sender identifies a private chat.

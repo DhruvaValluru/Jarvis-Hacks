@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { createInterface } from 'node:readline';
 
 export const HELP = 'Alfred controls your Windows PC from this private chat.\n'
   + 'Try: open notepad, volume 30, what is running, or timer for 10 seconds.\n'
@@ -16,9 +17,9 @@ export const STOPPED = 'Stopped. Everything Alfred was doing was cancelled, it l
 
 export class Bridge {
   constructor({ ownerId, sendText, sendAudio, synthesize, writeCommand, log = console.log,
-    now = () => Date.now(), hardStop = async () => {}, restarting = () => false }) {
+    now = () => Date.now(), hardStop = async () => {}, restarting = () => false, onDiscover = () => {} }) {
     Object.assign(this, { ownerId: String(ownerId || ''), sendText, sendAudio,
-      synthesize, writeCommand, log, now, hardStop, restarting });
+      synthesize, writeCommand, log, now, hardStop, restarting, onDiscover });
     this.audio = Boolean(synthesize);
     this.seen = new Set();
     this.pending = new Set();
@@ -33,6 +34,8 @@ export class Bridge {
     // Discovery never starts the Windows worker or grants access automatically.
     if (!this.ownerId) {
       this.log(`Telegram user ID: ${message.from?.id}. Set TELEGRAM_OWNER_ID locally and restart.`);
+      // The text (short) lets the Alfred app match the link code its setup shows; it is never run.
+      this.onDiscover(String(message.from?.id ?? ''), (message.text || '').trim().slice(0, 32));
       return;
     }
     if (String(message.from?.id) !== this.ownerId || String(message.chat.id) !== this.ownerId) return;
@@ -101,4 +104,30 @@ export class Bridge {
       }
     }
   }
+}
+
+// Parent mode (ALFRED_BRIDGE_MODE=parent): the Alfred app owns the one engine. Commands, approvals,
+// /stop and discovered user IDs (with what they typed) go to the app as JSON lines on `output`; the app answers on `input`
+// in the worker's format (reply, notice, approval, done, ready), which the bridge handles as before.
+export function parentLink({ input, output, onClose = () => {}, log = console.error }) {
+  let bridge;
+  let outbound = Promise.resolve();
+  const send = message => { output.write(JSON.stringify(message) + '\n'); };
+  createInterface({ input }).on('line', line => {
+    let message;
+    try { message = JSON.parse(line); } catch { log('Invalid message from the Alfred app.'); return; }
+    if (!bridge || !message || typeof message !== 'object') return;
+    if (message.type === 'done') { bridge.pending.delete(message.id); return; }
+    outbound = outbound.then(() => bridge.receiveWorker(message)).catch(() => {
+      log('Could not deliver a Telegram reply. Check connectivity and bot access.');
+    });
+  }).on('close', onClose);
+  return {
+    send,
+    attach(target) { bridge = target; },
+    flushed: () => outbound,
+    writeCommand: message => send(message),
+    hardStop: async () => send({ type: 'stop' }),
+    discovered: (id, text) => send({ type: 'telegram_user', id, ...(text ? { text } : {}) }),
+  };
 }

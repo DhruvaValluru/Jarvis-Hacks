@@ -1,0 +1,18 @@
+<!-- web demo: the simulated PC (demo/src/pc.html, put in by demo/build.py; desktop.js draws the screens) -->
+<aside class="demo-pc" id="demo-pc" aria-label="Simulated PC">
+  <div class="demo-pc__head">
+    <h2 class="demo-pc__title">Simulated PC</h2>
+    <p class="demo-pc__sub">Pretend Windows PCs. Alfred acts here, never on your computer.</p>
+    <button type="button" class="demo-pc__toggle" id="demo-pc-toggle" aria-expanded="true" aria-controls="demo-machines">Hide</button>
+  </div>
+  <div class="demo-machines" id="demo-machines">
+    <figure class="demo-machine demo-machine--desktop" data-machine="desktop">
+      <div class="demo-screen" id="demo-desktop"></div>
+      <figcaption><strong>Desktop</strong>: this PC, where Alfred runs</figcaption>
+    </figure>
+    <figure class="demo-machine demo-machine--laptop" data-machine="laptop">
+      <div class="demo-screen demo-screen--laptop" id="demo-laptop"></div>
+      <figcaption><strong>Laptop</strong>: your other PC, paired with this one</figcaption>
+    </figure>
+  </div>
+</aside>

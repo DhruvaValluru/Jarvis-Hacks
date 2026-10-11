@@ -1,0 +1,9 @@
+# EXACT build tools for the Alfred app and installer (Windows x64, Python 3.12). Install them together with the
+# app's packages, so pip checks they fit:  python -m pip install -r requirements.lock.txt -r packaging/requirements-build.txt
+# (packaging is already pinned in requirements.lock.txt). Not part of the test spec: the doctor ignores them.
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.7
+altgraph==0.17.5
+pefile==2024.8.26
+pywin32-ctypes==0.2.3
+setuptools==84.0.0

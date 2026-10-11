@@ -13,7 +13,7 @@ import sys
 
 from . import config
 
-SPEC_VERSION = "2"
+SPEC_VERSION = "3"
 PYTHON = (3, 12)
 # Settings every test run uses (test.bat sets these; CI too).
 TEST_PROFILE = {
@@ -81,9 +81,18 @@ def check() -> tuple[bool, list[str]]:
     # Hash what is actually installed, so any drift gives a different fingerprint.
     actual = sorted((n, installed.get(n)) for n in lock_pins())
     profile = sorted((k, os.environ.get(k, v)) for k, v in TEST_PROFILE.items())
-    fp = hashlib.sha256(f"{SPEC_VERSION}|{py}|{actual}|{profile}|node{node}".encode()).hexdigest()[:12]
+    fp = fingerprint(py, actual, profile, node)
     lines.append(f"SPEC v{SPEC_VERSION} fingerprint {fp} -> {'MATCHES SPEC' if ok else 'DOES NOT MATCH SPEC'}")
     return ok, lines
+
+
+def fingerprint(py, packages, profile, node) -> str:
+    return hashlib.sha256(f"{SPEC_VERSION}|{py}|{packages}|{profile}|node{node}".encode()).hexdigest()[:12]
+
+
+def reference_fingerprint() -> str:
+    """What --doctor prints on a machine that matches the spec (TESTING.md quotes it)."""
+    return fingerprint(PYTHON, sorted(lock_pins().items()), sorted(TEST_PROFILE.items()), NODE_MAJOR)
 
 
 def _node_major() -> int | None:

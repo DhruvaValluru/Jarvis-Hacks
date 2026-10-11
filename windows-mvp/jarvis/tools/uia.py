@@ -182,7 +182,7 @@ def ui_set_text(window: str, text: str, field: str = "") -> str:
     if ctrl is None:
         raise ToolError(f'No text field{" named " + repr(field) if field else ""} in "{w["title"]}".')
     if getattr(ctrl, "IsPassword", False):
-        raise ToolError("That's a password field. Jarvis doesn't type passwords; ask the user to enter it themselves.")
+        raise ToolError("That's a password field. Alfred doesn't type passwords; ask the user to enter it themselves.")
     value = ctrl.GetPattern(auto.PatternId.ValuePattern)
     if value is not None and not getattr(value, "IsReadOnly", False):
         value.SetValue(text)

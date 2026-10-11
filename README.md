@@ -1,8 +1,8 @@
-# Jarvis-Hacks
+<p align="center"><img src="docs/alfred-logo.png" alt="Alfred AI: every device, one butler." width="560"></p>
 
-An Iron Man–style "Jarvis": a voice-controlled assistant that sees and acts across all of your devices.
+# Alfred
 
-The assistant is named **Alfred** (the code still uses the working name `jarvis`).
+A voice and remote control assistant that sees and acts across all your devices.
 
 **Primary target: Windows ↔ Windows.** It gives the deepest system access with the fewest gatekeepers. Macs, iPhones and iPads join later as secondary nodes.
 
@@ -10,7 +10,11 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (general design) · [d
 
 **Contributing (people and agents):** start with the master task list [docs/TASKS.md](docs/TASKS.md) and the live board [docs/STATUS.md](docs/STATUS.md).
 
-**Try it now:** the Phase 0 Windows MVP is in [windows-mvp/](windows-mvp/README.md). Run `setup.bat`, then `jarvis.bat`, and talk to it.
+## Try Alfred
+
+- **Web demo:** coming soon. It will run in your browser on a simulated PC, so there is nothing to install and nothing happens to your computer.
+- **Download for Windows:** <https://github.com/DhruvaValluru/Jarvis-Hacks/releases/latest>. Under **Assets**, get `Alfred-Setup-<version>.exe`. You need 64-bit Windows 11, or Windows 10 version 1809 or later, and an [Anthropic API key](windows-mvp/README.md#getting-your-api-key); an OpenAI key (voice mode) and Telegram are optional. No admin rights needed. The installer isn't code-signed yet, so if Windows says "Windows protected your PC", click **More info**, then **Run anyway**. More in [INSTALL.md](windows-mvp/INSTALL.md).
+- **Run from source:** [windows-mvp/](windows-mvp/README.md). Run `setup.bat`, then `jarvis.bat` (the console), or `.venv\Scripts\python -m jarvis.app` (the app window).
 
 ## 1. Goals
 
@@ -144,18 +148,6 @@ A SYSTEM service does **not** see inside apps. It runs in session 0 with no desk
 - **Installer:** signed MSI/MSIX that installs the service, the user agent (auto-start at login) and any optional drivers.
 - **Signing:** a code-signing certificate for the app. An **EV certificate + Microsoft Partner Center** are needed only for level 6 drivers; use test-signing on dev machines.
 - **Privileges:** admin once at install. The service runs as SYSTEM; the agent runs elevated or with UI-access rights.
-
-## 8. Build phases
-
-| Phase | Scope | Done when |
-|---|---|---|
-| 0 Single PC | Agent: UI Automation, COM, PowerShell and capture tools over MCP; voice loop; local hub | "Open Spotify and play my focus playlist" works by voice |
-| 1 Service + ETW | SYSTEM service, ETW, named-pipe bridge, event timeline | Build-finished alert works |
-| 2 Two PCs | Hub orchestrator + PC worker job API (heartbeats, retries), pairing, mesh, registry, cross-PC routing, clipboard/tab handoff, browser extension | "Send that tab to my laptop" |
-| 3 Level 6, no drivers | Network rules (study mode), Cloud Files "Jarvis Drive" | Every PC's files appear in File Explorer |
-| 4 Hardening | Permission tiers, confirmations, audit log UI, kill switch, prompt-injection tests | Safe to run daily |
-| 5 Drivers (optional) | Virtual audio, display and input, Microsoft-signed | Phone mic works as the PC's input |
-| 6 Other devices | Phone app (voice, confirmations, notifications), Mac nodes | Control any PC from your phone |
 
 **Stack:**
 - Agent and service: C# / .NET 8, using `TraceEvent` for ETW. Python (`uiautomation`, `pywinauto`) is fine for prototyping.

@@ -292,7 +292,7 @@ class Computer:
             text = args.get("text", "")
             if b.focused_is_password():
                 raise ToolError(
-                    "The focused field is a password field. Jarvis doesn't type passwords; "
+                    "The focused field is a password field. Alfred doesn't type passwords; "
                     "ask the user to enter it themselves."
                 )
             b.type_text(text)

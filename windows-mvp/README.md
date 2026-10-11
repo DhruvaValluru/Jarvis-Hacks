@@ -15,6 +15,12 @@ A voice assistant for one Windows 10/11 PC. It opens apps and works inside them 
 
 The first voice command downloads the speech model (about 150 MB). With no API key, the simple commands still work.
 
+**Desktop app (preview):** `.venv\Scripts\python -m jarvis.app` opens Alfred in a window with a tray icon, a big STOP button, approvals, settings and an activity log. See [DESKTOP.md](DESKTOP.md).
+
+## Install the Alfred app (installer)
+
+Don't want Python and batch files? Download **`Alfred-Setup-<version>.exe`** from the [latest release](https://github.com/DhruvaValluru/Jarvis-Hacks/releases/latest), a normal Windows installer: no admin rights, Start menu shortcut, uninstall from Settings > Apps. Every CI run also builds one (the **Alfred-Setup** artifact of the `alfred-desktop` run on your PR's Checks tab). [INSTALL.md](INSTALL.md) says what to click when SmartScreen says "Unknown publisher" (Alfred isn't signed yet), how to uninstall or build it yourself, and how to cut a release.
+
 ## Getting your API key
 
 Jarvis needs an **Anthropic** API key. It starts with `sk-ant-`. Keys from other providers (for example OpenAI's `sk-proj-...`) won't work.
@@ -63,6 +69,40 @@ An optional custom service can replace both through [VOICE_API.md](VOICE_API.md)
 | "What's on my screen?" | Takes a screenshot and describes it (only when asked) |
 | "Open Paint and draw a red square" | Computer use: screenshots plus real mouse and keyboard, because Paint's canvas is invisible to UI Automation |
 
+## Use several PCs
+
+One Jarvis can work on all your PCs: "open Spotify on the laptop", "say dinner's ready on computer 2", "copy build.zip from computer 2 to here and unzip it", "send my clipboard to the laptop".
+
+1. Put the PCs on the same network: the same home Wi-Fi, or [Tailscale](https://tailscale.com/download) on each PC signed in to one account. Tailscale is private and encrypted, and it works when the PCs are in different places.
+2. On computer 2, run `jarvis.bat --show-token`. It prints a `JARVIS_TOKEN=...` line (and makes the token if there isn't one yet; it's kept in Windows Credential Manager, not in a file). Paste that line into `windows-mvp\.env` on computer 1.
+3. On computer 2, run `jarvis.bat --serve`, and click **Allow** if Windows Firewall asks. On computer 1, run `jarvis.bat`. It finds computer 2 by itself and says `Connected to laptop at 100.64.0.2:8765 (25 tools, 3 ms)`.
+
+You don't type any IP addresses. If discovery can't see a PC (some routers block broadcasts), add the `JARVIS_DEVICES=...` line that `--serve` also prints. To control both PCs from either one, set `JARVIS_SERVE=1` on both and use the same token. Sharing is off unless you run `--serve` or set `JARVIS_SERVE=1`.
+
+A shared PC listens only on its Tailscale address, or on its home-network address when there's no Tailscale, never on every network. `JARVIS_SERVE_HOST` picks another address (`0.0.0.0` means every network: only on networks you trust). If the PC's address changes (another Wi-Fi), restart Alfred there.
+
+| Say | What happens |
+|---|---|
+| "Open Spotify on the laptop" / "tell computer 2 to pause" / "say hi on the laptop" | Instant, no AI call: the fast path runs it on that PC |
+| "Send my clipboard to the laptop" | Instant clipboard handoff |
+| "Copy report.docx from the laptop to my Downloads and open it" | `copy_file` streams the file at full network speed (any size), then opens it here |
+| "Remind me in 10 minutes on the laptop" | The reminder comes back, only to the PC you set it from, and is spoken there |
+| "What's the laptop doing?" | Answered right away: each PC pushes its active window and whether someone's using it |
+| "Build it on computer 2, copy it here and run it" | Claude chains PCs; calls to different PCs in one step run at the same time |
+
+**How it stays fast:**
+- Each PC keeps two open connections to every other PC. One is for commands: Jarvis adds under 1 ms on top of the network time.
+- The other is a live feed the other PC answers the instant something happens: a message, a new active window, or a change to its tools. It also works as a heartbeat, so an offline PC is spotted right away and commands to it fail in under 2 seconds instead of hanging.
+- Files stream as raw bytes on a separate connection, so a big copy never blocks commands.
+- Claude already knows what every PC is showing when you ask, which saves a whole round trip.
+
+**Safety:**
+- Every request, and every discovery reply, has to prove the shared token. A stranger on your network can't find, control or impersonate your PCs. The token must be at least 16 characters, and Alfred never shows it in its logs.
+- Actions that need approval (PowerShell, Send buttons, writing files) are asked twice: on the PC you're talking to, and then by the PC that would do them, to whoever sits at it (a popup from `jarvis.bat`, an approval in the Alfred app). No answer within 60 seconds means no. If you own both PCs and one approval is enough for you, set `JARVIS_REMOTE_TRUST_CALLER=1` on the PC being controlled.
+- Files sent to a PC go to its Downloads folder unless you give a full path, never into Alfred's own folders, and only if the disk has room. An existing file is replaced only when you ask to overwrite it.
+- What other PCs report (their window titles) reaches Claude marked as untrusted data, like any text on screen.
+- Don't expose port 8765 to the internet. Each PC logs what it ran in its own audit log, including every file another PC read from it or wrote to it.
+
 ## Modes
 
 ```
@@ -70,10 +110,12 @@ jarvis.bat            press Enter to talk, or type
 jarvis.bat --wake     hands-free: say "Jarvis, ..." any time
 jarvis.bat --text     typing only
 jarvis.bat --do "open notepad"
+jarvis.bat --serve    let your other PCs use this one (prints how to pair)
+jarvis.bat --show-token   print this PC's JARVIS_TOKEN, to pair another PC
 jarvis.bat --list-tools
 ```
 
-Settings live in `windows-mvp\.env` (see `.env.example`): model (default `claude-opus-5-5` at low effort, for speed), speech model size, voice on/off. Server-side refusal fallbacks are on by default (`JARVIS_FALLBACKS=0` turns them off). Computer use is on by default (`JARVIS_COMPUTER_USE=0` turns it off).
+Settings live in `windows-mvp\.env` (see `.env.example`). The Alfred desktop app keeps them outside the install folder instead: plain settings in `%LOCALAPPDATA%\Jarvis\settings.env`, API keys and tokens in Windows Credential Manager (`Alfred/<NAME>`); a variable set in the environment wins over both, and from source `windows-mvp\.env` does too (`jarvis/config.py`). Settings: model (default `claude-opus-5-5` at low effort, for speed), speech model size, voice on/off. Server-side refusal fallbacks are on by default (`JARVIS_FALLBACKS=0` turns them off). Computer use is on by default (`JARVIS_COMPUTER_USE=0` turns it off).
 
 ## Safety
 
@@ -88,7 +130,7 @@ Settings live in `windows-mvp\.env` (see `.env.example`): model (default `claude
 
 ## Privacy and terms
 
-Setup shows a short data notice and asks you to type `agree`; Alfred doesn't run until you do. It says what goes to Anthropic (requests, window text, screenshots), OpenAI (Telegram voice notes and spoken replies) and Telegram/Photon (your chat), and what stays on the PC. Full text: [PRIVACY.md](PRIVACY.md). Read it again with `jarvis.bat --terms`.
+Setup shows a short data notice and asks you to type `agree`; Alfred doesn't run until you do. It says what goes to Anthropic (requests, window text, screenshots), OpenAI (Telegram voice notes and spoken replies, and your microphone while voice mode is on in the app) and Telegram/Photon (your chat), and what stays on the PC. Full text: [PRIVACY.md](PRIVACY.md). Read it again with `jarvis.bat --terms`.
 
 ## How it works
 
@@ -100,7 +142,7 @@ tools: open/close/focus apps, UI Automation (list/click/set/read), Excel/Word CO
        + computer use (fallback): screenshot, click, type, key, scroll, zoom
 ```
 
-Code: `jarvis/router.py` (instant commands), `jarvis/brain.py` (Claude loop), `jarvis/tools/` (one file per area; computer use is `computer.py` + `wininput.py`), `jarvis/voice.py`. Plan: [docs/COMPUTER_USE_PLAN.md](../docs/COMPUTER_USE_PLAN.md).
+Code: `jarvis/router.py` (instant commands), `jarvis/brain.py` (Claude loop), `jarvis/tools/` (one file per area; computer use is `computer.py` + `wininput.py`), `jarvis/remote.py` + `jarvis/discovery.py` (other PCs), `jarvis/voice.py`. Plan: [docs/COMPUTER_USE_PLAN.md](../docs/COMPUTER_USE_PLAN.md).
 
 ## Limits
 
@@ -109,4 +151,4 @@ Code: `jarvis/router.py` (instant commands), `jarvis/brain.py` (Claude loop), `j
 - Excel and Word tools need Office installed and the file already open.
 - Voice uses a simple loudness detector, so a quiet room works best.
 
-Next phases (service, cross-PC mesh, phone client) are in the [main README](../README.md#8-build-phases).
+Next phases (service, pairing by QR code, phone client) are in the [main README](../README.md#8-build-phases).

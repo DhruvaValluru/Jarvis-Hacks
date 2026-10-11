@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Alfred</title>
+<link rel="icon" href="logo.png" type="image/png">
+<link rel="stylesheet" href="app.css">
+<script src="app.js" defer></script>
+<script src="onboarding/settings-card.js" defer></script>
+</head>
+<body>
+<div class="aero-sky" aria-hidden="true"></div>
+<header class="top">
+  <div class="brand"><img src="logo.png" alt="" width="30" height="30"><span>Alfred</span></div>
+  <nav class="tabs" aria-label="Pages">
+    <button type="button" class="tab" data-view="home" aria-current="page">Home</button>
+    <button type="button" class="tab" data-view="activity">Activity</button>
+    <button type="button" class="tab" data-view="settings">Settings</button>
+  </nav>
+  <div class="chips">
+    <span id="pill" class="pill" data-state="starting" role="status" aria-live="polite">Connecting</span>
+    <button type="button" id="telegram" class="chip" data-state="off" title="Telegram">Telegram: off</button>
+  </div>
+  <button type="button" id="stop" class="stop" title="Stop everything Alfred is doing now">STOP</button>
+</header>
+
+<div id="banners" class="banners" aria-live="polite"></div>
+
+<main>
+  <section id="view-home" class="view home" aria-label="Conversation">
+    <ol id="log" class="log"></ol>
+    <div id="empty" class="empty">
+      <p class="big">What should Alfred do?</p>
+      <p>Try “open Notepad and write a shopping list” or “what’s on my screen?”. Alfred asks before it sends,
+        deletes, buys or posts anything. Press <kbd>STOP</kbd> any time.</p>
+    </div>
+    <form id="composer" class="composer" autocomplete="off">
+      <textarea id="input" rows="1" placeholder="Tell Alfred what to do…" aria-label="Command for Alfred"></textarea>
+      <button type="button" id="talk" class="talk" data-state="unavailable" aria-pressed="false" aria-disabled="true"
+        aria-label="Voice mode" aria-describedby="talk-state" title="Checking whether voice mode is available…">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="3" width="6" height="11" rx="3"/>
+          <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg>
+      </button>
+      <button type="submit" id="send" class="primary">Send</button>
+    </form>
+    <audio id="voice-audio" autoplay></audio>
+    <p class="hint"><span id="talk-state" class="talk-state" role="status" hidden></span>
+      <kbd>Enter</kbd> sends · <kbd>Shift</kbd>+<kbd>Enter</kbd> new line · <kbd>Esc</kbd> jumps to Stop<span id="hotkey-hint"></span>
+      · <button type="button" id="reset" class="link">Start a fresh conversation</button></p>
+  </section>
+
+  <section id="view-activity" class="view page" aria-label="Activity" hidden>
+    <div class="toolbar">
+      <h1>Activity</h1>
+      <input id="audit-filter" type="search" placeholder="Filter" aria-label="Filter activity">
+      <button type="button" id="audit-refresh">Refresh</button>
+    </div>
+    <p class="muted">Everything Alfred did on this PC, newest first. It is saved in <code id="audit-file"></code>.</p>
+    <table class="audit">
+      <thead><tr><th>When</th><th>Action</th><th>Result</th></tr></thead>
+      <tbody id="audit-rows"></tbody>
+    </table>
+    <p id="audit-empty" class="muted" hidden>Nothing yet.</p>
+  </section>
+
+  <section id="view-settings" class="view page" aria-label="Settings" hidden>
+    <h1>Settings</h1>
+    <form id="settings-form" class="card" autocomplete="off">
+      <h2>How Alfred works</h2>
+      <label class="field"><span>Model</span>
+        <input name="JARVIS_MODEL" spellcheck="false" placeholder="claude-opus-5-5"></label>
+      <label class="field"><span>Effort</span>
+        <select name="JARVIS_EFFORT">
+          <option value="low">Low: fastest replies</option>
+          <option value="medium">Medium</option>
+          <option value="high">High: most careful</option>
+        </select></label>
+      <label class="check"><input type="checkbox" name="JARVIS_COMPUTER_USE">
+        <span>Computer use<small>Alfred may take screenshots and use your mouse and keyboard when other tools can’t do the job.</small></span></label>
+      <label class="check"><input type="checkbox" name="JARVIS_SPEAK">
+        <span>Spoken replies<small>Alfred reads its replies aloud on this PC.</small></span></label>
+      <label class="field"><span>Voice mode’s voice</span>
+        <select name="OPENAI_LIVE_VOICE">
+          <option value="marin">Marin (default)</option><option value="alloy">Alloy</option><option value="ash">Ash</option><option value="ballad">Ballad</option>
+          <option value="beacon">Beacon</option><option value="bossa">Bossa</option><option value="cedar">Cedar</option><option value="cinder">Cinder</option>
+          <option value="coral">Coral</option><option value="delta">Delta</option><option value="echo">Echo</option><option value="gleam">Gleam</option>
+          <option value="meridian">Meridian</option><option value="quartz">Quartz</option><option value="ripple">Ripple</option><option value="sage">Sage</option>
+          <option value="shimmer">Shimmer</option><option value="stone">Stone</option><option value="tempo">Tempo</option><option value="verse">Verse</option>
+          <option value="vesper">Vesper</option><option value="willow">Willow</option>
+        </select></label>
+      <label class="field"><span>This PC’s name</span>
+        <input name="JARVIS_NAME" spellcheck="false" maxlength="30"></label>
+      <div class="row"><button type="submit" class="primary">Save</button><span id="settings-msg" class="msg" role="status"></span></div>
+    </form>
+
+    <section class="card">
+      <h2>API keys</h2>
+      <p id="secrets-note" class="muted"></p>
+      <div id="secrets"></div>
+    </section>
+
+    <section class="card">
+      <h2>Telegram</h2>
+      <p class="muted">Text Alfred from your phone. Needs the Telegram bot token and the Spectrum secret above.</p>
+      <div class="row"><span id="telegram-state" class="msg"></span><button type="button" id="telegram-toggle">Turn on</button></div>
+      <label class="field"><span>Owner’s Telegram ID</span>
+        <input id="owner" inputmode="numeric" spellcheck="false" placeholder="Easier: link it in Setup → Telegram below"></label>
+      <div class="row"><button type="button" id="owner-save">Save owner</button><span id="owner-msg" class="msg" role="status"></span></div>
+    </section>
+
+    <section id="setup-card" class="card" hidden>
+      <h2>Setup</h2>
+      <p class="muted">Go back to any step of Alfred’s setup.</p>
+      <p id="setup-steps" class="row"></p>
+      <label class="check"><input type="checkbox" id="setup-autostart">
+        <span>Start Alfred when I sign in<small id="setup-autostart-help">Alfred adds itself to Windows’ startup apps. Turn this off to remove it.</small></span></label>
+      <span id="setup-msg" class="msg" role="status"></span>
+    </section>
+
+    <section class="card">
+      <h2>About</h2>
+      <p class="muted">Settings are saved in <code id="settings-file"></code>.
+        <span id="version"></span></p>
+      <div class="row">
+        <button type="button" id="restart">Restart Alfred’s engine</button>
+        <button type="button" id="quit" class="danger" hidden>Quit Alfred</button>
+      </div>
+    </section>
+  </section>
+</main>
+
+<div id="consent" class="overlay" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="consent-title">
+    <h1 id="consent-title">Before Alfred starts</h1>
+    <p class="muted">Please read what Alfred does on this PC and where your data goes.</p>
+    <div id="notice" class="notice" tabindex="0"></div>
+    <div class="actions"><span id="consent-msg" class="msg" role="status"></span><button type="button" id="agree" class="primary">I agree</button></div>
+  </div>
+</div>
+
+<div id="approval" class="overlay" hidden>
+  <div class="sheet approval" role="alertdialog" aria-modal="true" aria-labelledby="approval-title" aria-describedby="approval-reason">
+    <h1 id="approval-title">Alfred wants to</h1>
+    <p id="approval-reason" class="reason"></p>
+    <p id="approval-from" class="from"></p>
+    <div class="countdown" aria-hidden="true"><div id="approval-bar" class="bar"></div></div>
+    <p id="approval-time" class="muted"></p>
+    <div class="actions">
+      <button type="button" id="deny">Deny</button>
+      <button type="button" id="allow" class="primary">Allow</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

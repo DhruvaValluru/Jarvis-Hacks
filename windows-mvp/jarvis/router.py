@@ -56,6 +56,10 @@ def route(text: str) -> tuple[str, dict] | None:
     if re.fullmatch(r"(?:turn (?:it|the volume|the sound) down|volume down|quieter|turn down the volume)", t):
         return "media_control", {"action": "volume_down", "times": 5}
 
+    if m := re.fullmatch(r"send (?:my |the )?clipboard to (.+)", t):
+        return "send_clipboard", {"to_pc": m.group(1)}
+    if m := re.fullmatch(r"(?:say|announce) (.+)", t):
+        return "say", {"text": m.group(1)}
     if m := re.fullmatch(r"(?:search(?: the web)?(?: for)?|google|look up) (.+)", t):
         return "web_search", {"query": m.group(1)}
     if re.fullmatch(r"what(?:'s| is) (?:the )?(?:time|date|day)(?: is it)?(?: today)?|what time is it|what day is it", t):
