@@ -9,9 +9,23 @@ Alfred also comes as a normal Windows app: an installer wizard, a Start menu sho
 - The **Microsoft Edge WebView2 Runtime** for Alfred's own window. Windows 11 has it. If your PC doesn't, the installer offers to install it (Microsoft's installer downloads it); without it Alfred opens in your web browser instead.
 - An Anthropic API key for anything beyond the simple built-in commands ([how to get one](README.md#getting-your-api-key)). You enter it in Alfred's **Settings**.
 
+## Download a release
+
+The newest release is always at **<https://github.com/DhruvaValluru/Jarvis-Hacks/releases/latest>**. You don't need a GitHub account.
+
+1. Under **Assets**, download `Alfred-Setup-<version>.exe`.
+2. Optional: check the download. In PowerShell, `Get-FileHash .\Alfred-Setup-<version>.exe` should show the SHA-256 in the release notes (and in `SHA256SUMS.txt` next to the installer).
+3. [Install](#install) it.
+
+**Cutting a release (maintainers):** on GitHub, open **Actions** > **alfred-desktop** > **Run workflow**, pick the branch, tick **release**, add a line of notes if you like, and press **Run workflow**. (From a terminal: `gh workflow run alfred-desktop.yml --ref main -f release=true`.) The `installer` job builds and checks the installer as on every push. Only if it passes, the `release` job publishes that same installer and its `SHA256SUMS.txt` as the release `v<version>`, with the version from `jarvis\__init__.py` and the notes from [packaging/RELEASE_NOTES.md](packaging/RELEASE_NOTES.md). It's a normal release, so `/releases/latest` points at it.
+
+- **Raise `__version__` in `jarvis\__init__.py` for each new release.** Running it again with the same version replaces that release's installer, checksum and notes instead of failing, but its tag stays on the old commit.
+- GitHub only shows **Run workflow** for workflows on the default branch (`main`).
+- Only the `release` job may write to the repository; everything else in the workflow is read-only.
+
 ## Download the installer (test builds)
 
-The `alfred-desktop` workflow builds the installer on GitHub Actions for every push and pull request that changes `windows-mvp/`.
+The `alfred-desktop` workflow builds the installer on GitHub Actions for every push and pull request that changes `windows-mvp/`. Use these to try a change before it's released.
 
 1. Open the pull request on GitHub and go to its **Checks** tab (or the repository's **Actions** tab), then open the **alfred-desktop** run for the newest commit.
 2. On the run's summary page, under **Artifacts**, download **Alfred-Setup** (you need to be signed in to GitHub). It's a zip file.
@@ -22,7 +36,7 @@ Use the installer from a green run: that run built Alfred, self-tested it, insta
 ## Install
 
 1. Double-click `Alfred-Setup-<version>.exe`.
-2. **"Windows protected your PC"**: test builds aren't code-signed yet, so Microsoft Defender SmartScreen shows the publisher as **Unknown publisher**. Click **More info**, check that the app is `Alfred-Setup-<version>.exe`, and click **Run anyway**. Do this only for an installer you downloaded from this repository's Actions page. (Your browser may also say the file isn't commonly downloaded: choose **Keep**.)
+2. **"Windows protected your PC"**: Alfred isn't code-signed yet, so Microsoft Defender SmartScreen shows the publisher as **Unknown publisher**. Click **More info**, check that the app is `Alfred-Setup-<version>.exe`, and click **Run anyway**. Do this only for an installer you downloaded from this repository's Releases or Actions page. (Your browser may also say the file isn't commonly downloaded: choose **Keep**.)
 3. Follow the wizard:
    - **Welcome**.
    - **What Alfred does and where your data goes**: the data notice ([PRIVACY.md](PRIVACY.md)). Read it, then choose **I have read the notice**.
@@ -96,4 +110,4 @@ What's pinned: Python 3.12.10 and `requirements.lock.txt` (the [test spec](TESTI
 
 ## Code signing
 
-Test builds aren't signed, which is why SmartScreen says "Unknown publisher" and some antivirus tools look more closely at them. Before installers go to people outside the team, `Alfred.exe`, `alfred-cli.exe`, the installer and its uninstaller should be signed (Inno Setup's `SignTool` setting covers the last two). Which certificate to use is the repository owner's decision (task K3).
+Releases and test builds aren't signed, which is why SmartScreen says "Unknown publisher" and some antivirus tools look more closely at them. Before installers go to people outside the team, `Alfred.exe`, `alfred-cli.exe`, the installer and its uninstaller should be signed (Inno Setup's `SignTool` setting covers the last two). Which certificate to use is the repository owner's decision (task K3).

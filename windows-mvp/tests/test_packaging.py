@@ -14,7 +14,7 @@ import pytest
 MVP = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(MVP))
 
-from jarvis import config, settings, uninstall  # noqa: E402
+from jarvis import __version__, config, settings, uninstall  # noqa: E402
 from jarvis.service import bridge_command, engine_command  # noqa: E402
 from jarvis.settings import MemoryBackend  # noqa: E402
 
@@ -162,6 +162,35 @@ def test_ci_compiles_with_the_pinned_inno_setup():
     pinned = ".".join(version.groups())
     assert f"Inno Setup {pinned}" in (MVP / "INSTALL.md").read_text(encoding="utf-8")
     assert "Join-Path $Build 'innosetup\\ISCC.exe'" in (PACKAGING / "installer.ps1").read_text(encoding="utf-8")
+
+
+def test_a_release_publishes_the_installer_ci_checked():
+    """Run workflow with "release" ticked publishes the installer the installer job just built and tested
+    (INSTALL.md, "Download a release"). Only that job may write to the repository, it finds the version where
+    installer.ps1 does, and the release notes have a place for everything the job fills in."""
+    yaml = pytest.importorskip("yaml")
+    desktop = yaml.safe_load((WORKFLOWS / "alfred-desktop.yml").read_text(encoding="utf-8"))
+    inputs = desktop[True]["workflow_dispatch"]["inputs"]  # PyYAML reads the key `on` as True
+    assert inputs["release"]["type"] == "boolean" and inputs["release"]["default"] is False
+    assert desktop["permissions"] == {"contents": "read"}
+    release = desktop["jobs"]["release"]
+    assert release["needs"] == "installer" and release["permissions"] == {"contents": "write"}
+    assert release["if"] == "github.event_name == 'workflow_dispatch' && inputs.release"
+
+    def uses(job, action):
+        return [s["with"] for s in desktop["jobs"][job]["steps"] if s.get("uses", "").startswith(action + "@")]
+    upload, download = uses("installer", "actions/upload-artifact")[0], uses("release", "actions/download-artifact")[0]
+    assert upload["name"] == download["name"] == "Alfred-Setup"
+    assert upload["path"] == "windows-mvp/dist/Alfred-Setup-*.exe"  # one file, so it's at the artifact's top
+    script = "\n".join(s.get("run", "") for s in release["steps"])
+    assert "windows-mvp/jarvis/__init__.py" in script and 'setup="Alfred-Setup-$version.exe"' in script
+    assert "gh release create" in script and "--target \"$GITHUB_SHA\"" in script and "--clobber" in script
+    init = (MVP / "jarvis" / "__init__.py").read_text(encoding="utf-8")
+    assert re.search(r'^__version__ = "([^"]*)"', init, re.M)[1] == __version__
+    notes = (PACKAGING / "RELEASE_NOTES.md").read_text(encoding="utf-8")
+    for placeholder in ("{{VERSION}}", "{{SHA256}}", "{{COMMIT}}"):
+        assert placeholder in notes and f"'{placeholder}'" in script
+    assert "Run anyway" in notes and "https://dhruvavalluru.github.io/Jarvis-Hacks/" in notes
 
 
 def _pascal_routine(source: str, header: str) -> str:
