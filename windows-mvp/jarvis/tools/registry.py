@@ -96,6 +96,11 @@ def _short(args: dict, limit: int = 300) -> str:
     return text if len(text) <= limit else text[:limit] + "..."
 
 
+# On Windows, appending is "seek to the end, then write": two threads writing at once can land on the
+# same offset and overwrite each other, which leaves torn lines. Each line is written whole, one at a time.
+_AUDIT_LOCK = threading.Lock()
+
+
 def audit(name: str, args: dict, ok: bool, result: Any) -> None:
     entry = {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -104,9 +109,10 @@ def audit(name: str, args: dict, ok: bool, result: Any) -> None:
         "ok": ok,
         "result": result.caption if isinstance(result, Image) else str(result)[:500],
     }
+    line = (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
     try:
-        with open(config.data_dir() / "audit.jsonl", "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        with _AUDIT_LOCK, open(config.data_dir() / "audit.jsonl", "ab", buffering=0) as f:
+            f.write(line)
     except OSError:
         pass
 

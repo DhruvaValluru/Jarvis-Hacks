@@ -313,3 +313,27 @@ if __name__ == "__main__":
         if name.startswith("test_"):
             fn()
             print("ok", name)
+
+
+def test_audit_lines_stay_whole_when_threads_write_at_once(tmp_path, monkeypatch):
+    """Windows appends by seeking to the end and then writing, so unguarded writers overwrite each other."""
+    import json
+    import threading
+
+    from jarvis import config
+
+    monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
+    start = threading.Barrier(8)
+
+    def write(n):
+        start.wait()
+        for i in range(50):
+            registry.audit(f"tool{n}", {"i": i, "pad": "x" * (n * 97)}, True, "done " * n)
+
+    threads = [threading.Thread(target=write, args=(n,)) for n in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    lines = (tmp_path / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 400 and all(json.loads(line)["ok"] for line in lines)
