@@ -84,7 +84,10 @@ class ModelDownload:
             self.model, self.error, self.total = name, "", APPROX_BYTES.get(name, 0)
             self._base = folder_bytes(voice.model_folder(name))
             env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1",
-                   "HF_HUB_DISABLE_PROGRESS_BARS": "1", "HF_HUB_DISABLE_TELEMETRY": "1"}
+                   "HF_HUB_DISABLE_PROGRESS_BARS": "1", "HF_HUB_DISABLE_TELEMETRY": "1",
+                   # Plain HTTP downloads into the model folder: progress shows as the files grow there, and
+                   # no Xet transfer threads keep the process alive after it finished.
+                   "HF_HUB_DISABLE_XET": "1"}
             try:
                 child = Child(self.command(name, str(config.models_dir())), cwd=str(config.app_dir()), env=env)
             except OSError as e:
@@ -148,10 +151,13 @@ class ModelDownload:
                     self.total = message["bytes"]
                 elif message.get("type") in ("done", "error"):
                     result = message
+                    break  # the answer is in: don't wait for the process to close its output as well
         except (OSError, ValueError):
             pass
         code = child.wait(10)
-        child.close()
+        if code is None and result.get("type") == "done":
+            code = 0  # finished but still shutting down (a library's threads): the model is there, so it's done
+        child.close()  # also ends a process that's still around
         with self._lock:
             if self._child is not child:
                 return  # a cancelled download, and Download was pressed again meanwhile: not ours to finish
@@ -207,5 +213,17 @@ def main(argv=None) -> int:
     return fetch(*args)
 
 
+def run_and_exit(argv=None) -> None:
+    """The download process's entry point: exit as soon as the answer is printed. A download library can
+    leave threads running that would otherwise keep the process (and the setup's progress) waiting."""
+    code = main(argv)
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except (AttributeError, OSError, ValueError):
+            pass
+    os._exit(code)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    run_and_exit()

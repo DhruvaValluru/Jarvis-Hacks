@@ -260,7 +260,8 @@ class Shell:
                 self._minimized = False
             except AttributeError:
                 pass
-            webview.start()
+            icon = window_icon()
+            webview.start(**({"icon": icon} if icon else {}))
         except Exception as e:  # noqa: BLE001 - no display, pythonnet missing, ...
             print(f"Alfred's window couldn't open ({type(e).__name__}: {e}). Using your browser instead.")
             self.window = None
@@ -366,6 +367,27 @@ STATE_LABELS = {"off": "off", "needs_consent": "needs your OK", "starting": "sta
 
 
 LOGO = Path(__file__).resolve().parent / "ui" / "logo.png"
+ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 96, 128, 256)
+
+
+def window_icon() -> str | None:
+    """Alfred's logo as an .ico for the window and its taskbar button. Without one, pywebview shows the icon
+    Windows has for Alfred.exe, and Windows can keep showing an old one from its icon cache after an update.
+    Installed: the alfred.ico next to Alfred.exe (packaging/alfred.spec). From source: made from ui/logo.png."""
+    if config.frozen():
+        path = config.app_dir() / "alfred.ico"
+        return str(path) if path.is_file() else None
+    path = config.data_dir() / "alfred.ico"
+    try:
+        if not path.is_file() or path.stat().st_mtime < LOGO.stat().st_mtime:
+            from PIL import Image
+
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with Image.open(LOGO) as logo:
+                logo.convert("RGBA").save(path, format="ICO", sizes=[(n, n) for n in ICON_SIZES])
+        return str(path)
+    except (OSError, ValueError, ImportError):
+        return None
 
 
 def tray_image(Image, ImageDraw, logo=LOGO):

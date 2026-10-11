@@ -325,7 +325,7 @@ class Onboarding:
         check = validators.check_telegram_token(token)
         if not check.ok:
             return _failed(check)
-        self._save_secret("TELEGRAM_BOT_TOKEN", validators.clean(token))
+        self._save_secret("TELEGRAM_BOT_TOKEN", validators.bot_token(token))
         self.bot = dict(check.info)
         return Response.json({**check.as_dict(), "hint": self.store.secret_hint("TELEGRAM_BOT_TOKEN"),
                               "restarting": self._apply({"TELEGRAM_BOT_TOKEN"})})

@@ -303,7 +303,7 @@ def test_secrets_are_write_only(app):
     status, body = client.call("PUT", "/api/secrets/ANTHROPIC_API_KEY", {"value": "sk-ant-new-key-0000000000-1111"})
     assert status == 200 and body["restarting"] is True
     assert client.call("PUT", "/api/secrets/OPENAI_API_KEY", {"value": "  "})[0] == 400
-    assert client.call("PUT", "/api/secrets/OPENAI_API_KEY", {"value": "a\nb"})[0] == 400
+    assert client.call("PUT", "/api/secrets/OPENAI_API_KEY", {"value": "a\nb"})[0] == 200  # a wrapped key: joined
     assert client.call("PUT", "/api/secrets/JARVIS_MODEL", {"value": "x"})[0] == 404
     assert client.call("DELETE", "/api/secrets/JARVIS_MODEL")[0] == 404
 
@@ -487,7 +487,7 @@ def _fake_webview(monkeypatch, renderer):
     windows = []
     webview = types.ModuleType("webview")
     webview.create_window = lambda title, url, **kw: windows.append(FakeWindow(url)) or windows[-1]
-    webview.start = lambda: None
+    webview.start = lambda **kwargs: None
     webview.platforms = types.ModuleType("webview.platforms")
     webview.platforms.winforms = types.ModuleType("webview.platforms.winforms")
     webview.platforms.winforms.renderer = renderer
@@ -743,3 +743,13 @@ def test_alfred_opens_even_when_telegram_cannot_start(app, monkeypatch):
     notices = [e["text"] for e in app.service.bus.events(0, timeout=0) if e["type"] == "notice"]
     assert any("Telegram didn't start" in t and "win32timezone" in t for t in notices), notices
     assert "win32timezone" in (config.data_dir() / "errors.log").read_text(encoding="utf-8")
+
+
+def test_window_icon_is_the_logo_as_an_ico(env):
+    from PIL import Image
+
+    path = app_main.window_icon()
+    assert path and path.endswith("alfred.ico")
+    with Image.open(path) as ico:
+        assert ico.format == "ICO" and (256, 256) in ico.info["sizes"] and (16, 16) in ico.info["sizes"]
+    assert app_main.window_icon() == path  # made once, then reused

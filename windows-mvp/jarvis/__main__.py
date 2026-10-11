@@ -144,7 +144,7 @@ def main() -> None:
     if args.fetch_speech_model:
         from .onboarding import speech
 
-        sys.exit(speech.main(args.fetch_speech_model))
+        speech.run_and_exit(args.fetch_speech_model)
 
     if args.terms:
         if consent.accepted():

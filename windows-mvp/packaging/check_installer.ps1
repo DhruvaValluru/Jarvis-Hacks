@@ -75,6 +75,31 @@ $global:LASTEXITCODE = 0
 & (Join-Path $InstallDir 'alfred-cli.exe') --selftest
 if ($LASTEXITCODE -ne 0) { throw "The installed alfred-cli.exe --selftest failed (exit code $LASTEXITCODE)." }
 
+Step 'Speech model download, as the setup runs it (tiny.en, into a temporary folder)'
+# On a real PC the setup's download finished but its process never exited, so the setup span forever.
+# The setup starts exactly this command (jarvis/onboarding/speech.py: download_command).
+$models = Join-Path ([IO.Path]::GetTempPath()) ("AlfredModelCheck-" + [guid]::NewGuid().ToString('N'))
+$cli = Join-Path $InstallDir 'alfred-cli.exe'
+$out = Join-Path $LogDir 'alfred-model-download.log'
+$env:HF_HUB_DISABLE_XET = '1'; $env:HF_HUB_DISABLE_PROGRESS_BARS = '1'
+$download = Start-Process -FilePath $cli -ArgumentList ('--fetch-speech-model tiny.en "{0}"' -f $models) `
+  -RedirectStandardOutput $out -NoNewWindow -PassThru
+$null = $download.Handle  # keep the handle, so ExitCode is readable once it ends
+if (-not $download.WaitForExit(300000)) {
+  $download.Kill(); Show-Log $out
+  throw 'The speech model download did not exit within 5 minutes (the setup would spin forever).'
+}
+Show-Log $out
+$said = Get-Content $out -Raw
+if ($download.ExitCode -ne 0 -or $said -notmatch '"type": "done"') {
+  throw "The speech model download failed (exit code $($download.ExitCode))."
+}
+$bin = Get-ChildItem -Path $models -Recurse -Filter 'model.bin' -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($null -eq $bin) { throw "The download said done, but there's no model.bin under $models." }
+Write-Host "[ok] speech model downloaded ($($bin.FullName))"
+Remove-Item -Recurse -Force -Path $models -ErrorAction SilentlyContinue
+Remove-Item Env:HF_HUB_DISABLE_XET, Env:HF_HUB_DISABLE_PROGRESS_BARS -ErrorAction SilentlyContinue
+
 Step 'Uninstall silently'
 $uninstaller = Join-Path $InstallDir 'unins000.exe'
 $arguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="{0}"' -f $uninstallLog

@@ -121,6 +121,7 @@ datas = [
     (str(MVP / "jarvis" / "app" / "ui"), "jarvis/app/ui"),  # the window's HTML, CSS and JavaScript
     (str(MVP / "PRIVACY.md"), "."),  # the data notice (consent.notice_markdown)
     (str(MVP / "requirements.lock.txt"), "."),  # what python -m jarvis --doctor compares against
+    (str(ICON), "."),  # the window's and taskbar's icon (app/main.py: window_icon)
 ]
 datas += collect_data_files("faster_whisper")  # assets/silero_vad*.onnx
 datas += collect_data_files("webview", subdir="lib")  # WebView2 .NET interop DLLs and WebView2Loader.dll

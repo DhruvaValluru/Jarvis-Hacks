@@ -29,6 +29,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from .. import __version__, config, consent, onboarding, settings
+from ..onboarding import validators
 from ..service import NotReady, QueueFull
 from ..service.bridge import KEYS as TELEGRAM_KEYS
 from . import voice
@@ -339,7 +340,9 @@ class App:
     def put_secret(self, req: Request, name: str) -> Response:
         _secret_name(name)
         value = req.json().get("value")
-        if not isinstance(value, str) or not value.strip():
+        if isinstance(value, str):  # as the setup does: invisible characters and stray text from a paste go
+            value = validators.bot_token(value) if name == "TELEGRAM_BOT_TOKEN" else validators.clean(value)
+        if not isinstance(value, str) or not value:
             raise HTTPError(400, "Paste the key first.")
         try:
             self.store.set_secret(name, value)

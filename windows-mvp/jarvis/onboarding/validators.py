@@ -55,8 +55,30 @@ class Offline(Exception):
 
 
 def clean(value) -> str:
-    """What someone pasted: surrounding spaces, quotes and line breaks removed."""
-    return str(value or "").strip().strip("'\"").strip()
+    """A pasted key, token or secret as the service expects it. Copying from a chat or a web page can bring
+    invisible characters (zero-width spaces, byte-order and direction marks), look-alike characters, line
+    breaks (a long key wrapped onto two lines), quotes and spaces around it; all of that goes. Spaces
+    inside stay, so pasted words aren't glued into something that looks like a key."""
+    text = "".join(ch for ch in _visible(value) if ch not in "\r\n\t\v\f")
+    return text.strip().strip("'\"`").strip()
+
+
+def _visible(value) -> str:
+    """The text with look-alike characters made plain (NFKC) and invisible formatting characters removed."""
+    text = unicodedata.normalize("NFKC", str(value or ""))
+    return "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
+
+
+# A bot token inside other text, e.g. @BotFather's whole "Done! Congratulations..." message.
+BOT_TOKEN_IN_TEXT = re.compile(r"(?<![0-9A-Za-z_-])[0-9]{5,15}:[A-Za-z0-9_-]{30,60}(?![0-9A-Za-z_-])")
+
+
+def bot_token(value) -> str:
+    """The bot token in what was pasted: the token itself, or the message from @BotFather that contains it."""
+    found = set(BOT_TOKEN_IN_TEXT.findall(_visible(value)))
+    if len(found) == 1:
+        return found.pop()
+    return clean(value)
 
 
 # --- Anthropic ---------------------------------------------------------------
@@ -140,12 +162,13 @@ def check_openai(key) -> Check:
 # --- Telegram ----------------------------------------------------------------
 def check_telegram_token(token) -> Check:
     """The token's shape, then Telegram's getMe: the bot's @name and t.me link."""
-    token = clean(token)
+    token = bot_token(token)
     if not token:
         return Check(False, "empty", "Paste the bot token from @BotFather first.")
     if not BOT_TOKEN.fullmatch(token):
         return Check(False, "format", "That doesn't look like a bot token. It looks like 123456789:AAE..., "
-                                      "and @BotFather sends it when you make a bot with /newbot.")
+                                      "and @BotFather sends it when you make a bot with /newbot. You can paste "
+                                      "its whole message: Alfred finds the token in it.")
     try:
         status, body = fetch(urllib.request.Request(f"{TELEGRAM_API}/bot{token}/getMe", headers={"User-Agent": "Alfred"}))
     except Offline:

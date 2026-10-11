@@ -940,3 +940,50 @@ def test_setup_imports_nothing_optional():
                          cwd=str(Path(__file__).resolve().parent.parent))
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "[]"
+
+
+def test_a_finished_download_that_lingers_still_shows_done(env):
+    """On a real PC the download printed "done" but its process kept running (a library's threads), so the
+    setup span forever. The answer counts as soon as it arrives; the lingering process is ended."""
+    lingering = _fake_download("done")
+    downloads = speech.ModelDownload(lambda name, folder: [*lingering(name, folder)[:2],
+                                                           lingering(name, folder)[2] + "time.sleep(60)\n",
+                                                           name, folder])
+    downloads.start("base.en")
+    assert _wait(lambda: downloads.progress()["state"] == "done", timeout=20)
+    assert downloads.wait(5) and speech.present("base.en")
+
+
+def test_the_download_process_turns_off_xet_and_exits_right_after_its_answer(env, monkeypatch):
+    seen = {}
+
+    class FakeChild:
+        def __init__(self, cmd, *, cwd=None, env=None):
+            seen["env"] = env
+            raise OSError("not starting anything in this test")
+
+    monkeypatch.setattr("jarvis.service.process.Child", FakeChild)
+    assert speech.ModelDownload(lambda name, folder: ["x"]).start("base.en")["state"] == "error"
+    assert seen["env"]["HF_HUB_DISABLE_XET"] == "1"
+
+    exits = []
+    monkeypatch.setattr(speech, "main", lambda argv=None: 0)
+    monkeypatch.setattr(speech.os, "_exit", exits.append)
+    speech.run_and_exit(["base.en", str(env)])
+    assert exits == [0]
+
+
+def test_pasted_tokens_and_keys_are_found_in_what_was_copied():
+    """A real token from @BotFather was turned down as "doesn't look like a bot token": copies from chats
+    bring invisible characters, and people paste the whole message. Alfred finds the token in it."""
+    token = "1234567890:AAH" + "x" * 32
+    message = ("Done! Congratulations on your new bot. You will find it at t.me/example_bot.\n"
+               "Use this token to access the HTTP API:\n" + token + "\nKeep your token secure and store it "
+               "safely, it can be used by anyone to control your bot.\n\nFor a description of the Bot API, "
+               "see this page: https://core.telegram.org/bots/api")
+    for pasted in (token, f"  {token}\n", f"​{token}‎", f'﻿"{token}"', message, token + "."):
+        assert validators.bot_token(pasted) == token, repr(pasted)
+    assert validators.bot_token(f"{token} {token[:-1]}y") != token  # two different tokens: don't guess
+    key = "sk-ant-api03-" + "k" * 40
+    assert validators.clean(f" ​{key[:20]}\n{key[20:]} ") == key  # wrapped onto two lines
+    assert validators.clean("sk ant with spaces in it ok") == "sk ant with spaces in it ok"  # words stay words

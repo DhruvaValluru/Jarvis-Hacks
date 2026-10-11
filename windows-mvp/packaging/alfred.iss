@@ -30,6 +30,8 @@
 #define CliExe "alfred-cli.exe"
 
 [Setup]
+; Refresh Windows' icon cache at the end, so an update's new icon replaces the old one on shortcuts and the taskbar.
+ChangesAssociations=yes
 ; A fixed id, so a newer installer updates the installed Alfred instead of adding a second one. Never change it.
 AppId={{A6BF1F43-FDD9-47FA-AE7F-AAF863E798BF}
 AppName={#AppName}
