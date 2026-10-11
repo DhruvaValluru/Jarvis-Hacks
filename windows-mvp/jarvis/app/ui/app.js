@@ -1,7 +1,8 @@
 "use strict";
 // Alfred's window. Talks only to its own local server (server.py): JSON over /api and the event
 // feed at /api/events, each call carrying this launch's key. All text from Alfred, Telegram or files
-// is shown with textContent, never as HTML.
+// is shown with textContent, never as HTML. Voice mode also talks to OpenAI's live voice model over
+// WebRTC; the server starts that session (app/voice.py), so the OpenAI key never reaches the page.
 
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -29,11 +30,13 @@
     desktop: "Asked by a command from this window.",
     telegram: "Asked by a command from Telegram.",
     remote: "Another of your PCs wants to do this on this PC.",
-    voice: "Asked by a voice command.",
+    voice: "Asked in voice mode. Answer here: nobody can approve by voice.",
   };
+  const YOU = { desktop: "You", voice: "You, by voice" };
+  const ALFRED = { desktop: "Alfred", voice: "Alfred, by voice" };
   const SECRETS = [
     ["ANTHROPIC_API_KEY", "Anthropic API key", "Needed for anything beyond simple built-in commands."],
-    ["OPENAI_API_KEY", "OpenAI API key", "Optional: Telegram voice notes and spoken replies there."],
+    ["OPENAI_API_KEY", "OpenAI API key", "Optional: voice mode here, and voice notes and spoken replies in Telegram."],
     ["TELEGRAM_BOT_TOKEN", "Telegram bot token", "From @BotFather (/newbot) in Telegram."],
     ["SPECTRUM_PROJECT_SECRET", "Photon Spectrum secret", "Connects your Telegram bot to Alfred."],
   ];
@@ -143,7 +146,8 @@
   }
 
   // Browsers allow about six connections to one server, so a page nobody is looking at lets go of
-  // its feed. When it is shown again it catches up from lastSeq.
+  // its feed. When it is shown again it catches up from lastSeq. Not during voice mode: Alfred's
+  // window is often behind the apps it opens then, and approvals and Stop must still reach the call.
   let hideTimer = null;
   function resume() {
     clearTimeout(hideTimer);
@@ -154,15 +158,20 @@
   function onVisibility() {
     clearTimeout(hideTimer);
     if (!document.hidden) resume();
-    else hideTimer = setTimeout(() => { paused = true; disconnect(); }, 10000);
+    else hideTimer = setTimeout(() => {
+      if (live) return;
+      paused = true;
+      disconnect();
+    }, 10000);
   }
   document.addEventListener("visibilitychange", onVisibility);
-  window.addEventListener("pagehide", () => { paused = true; disconnect(); });
+  window.addEventListener("pagehide", () => { endVoice(); paused = true; disconnect(); });
   window.addEventListener("pageshow", resume);
 
   function onSignedOut() {
     if (signedOut) return;
     signedOut = true;
+    endVoice("Voice mode is off.");
     disconnect();
     setPill("offline");
     banner("conn", "This window isn't signed in to Alfred any more (Alfred may have restarted). " +
@@ -184,6 +193,7 @@
     for (const pending of status.approvals || []) {
       if (!approvals.has(pending.token)) addApproval(pending);
     }
+    refreshVoice();
     return status;
   }
 
@@ -195,11 +205,11 @@
     }
     switch (event.type) {
       case "command":
-        say("you", event.text, event.source === "desktop" ? "You" : `You, from ${place(event.source)}`);
+        say("you", event.text, YOU[event.source] || `You, from ${place(event.source)}`);
         break;
       case "reply":
         replied.add(event.id);
-        say("alfred", event.text, event.source && event.source !== "desktop" ? `Alfred, to ${place(event.source)}` : "Alfred");
+        say("alfred", event.text, ALFRED[event.source || "desktop"] || `Alfred, to ${place(event.source)}`);
         break;
       case "status":
         line(event.text, "step");
@@ -212,6 +222,10 @@
         break;
       case "stop":
         line(`Stopped from ${place(event.source)}. Alfred let go of the mouse and keyboard and is starting again.`, "stopped");
+        endVoice("Voice mode is off.");
+        break;
+      case "voice_off":  // the window was closed to the tray
+        endVoice("Voice mode is off: Alfred's window was closed.");
         break;
       case "done":
         if (!event.ok && !event.stopped && !replied.has(event.id)) line("That command didn't finish.", "error");
@@ -243,6 +257,7 @@
       case "approval":
         line(`Alfred asked: ${event.reason}`);
         addApproval(event);
+        if (event.source === "voice") voiceApproval(event);
         break;
       case "approval_closed":
         line(`${event.approved ? "Allowed" : "Not allowed"} (answered by ${place(event.by)}).`);
@@ -335,6 +350,7 @@
   }
 
   async function stopEverything() {
+    endVoice("Voice mode is off.");
     stopButton.classList.remove("pressed");
     void stopButton.offsetWidth;
     stopButton.classList.add("pressed");
@@ -451,6 +467,7 @@
       await api("POST", "/api/consent", { version: consentVersion });
       $("consent").hidden = true;
       line("Thanks. Alfred is starting.");
+      refreshVoice();
       input.focus();
     } catch (e) {
       $("consent-msg").textContent = e.message;
@@ -537,12 +554,18 @@
     fields.JARVIS_COMPUTER_USE.checked = value("JARVIS_COMPUTER_USE") !== "0";
     fields.JARVIS_SPEAK.checked = value("JARVIS_SPEAK") !== "0";
     fields.JARVIS_NAME.value = saved.JARVIS_NAME || "";
+    const voiceName = value("OPENAI_LIVE_VOICE");
+    if (![...fields.OPENAI_LIVE_VOICE.options].some((option) => option.value === voiceName)) {
+      fields.OPENAI_LIVE_VOICE.append(new Option(voiceName, voiceName));  // a voice set in settings.env
+    }
+    fields.OPENAI_LIVE_VOICE.value = voiceName;
     $("owner").value = saved.TELEGRAM_OWNER_ID || "";
     $("settings-file").textContent = settings.file;
     $("secrets-note").textContent = settings.secrets_saved
       ? "Keys are kept in Windows Credential Manager, protected by your Windows sign-in. Alfred never shows a saved key again, only its last few characters."
       : "This PC has no Credential Manager, so keys are kept only until Alfred closes. Alfred never shows a saved key again.";
     renderSecrets(settings.secrets);
+    refreshVoice();  // a saved or removed OpenAI key turns voice mode on or off
   }
 
   async function saveSettings(event) {
@@ -556,6 +579,7 @@
       JARVIS_COMPUTER_USE: fields.JARVIS_COMPUTER_USE.checked ? "1" : "0",
       JARVIS_SPEAK: fields.JARVIS_SPEAK.checked ? "1" : "0",
       JARVIS_NAME: fields.JARVIS_NAME.value.trim(),
+      OPENAI_LIVE_VOICE: fields.OPENAI_LIVE_VOICE.value,
     };
     const changes = {};
     for (const [key, next] of Object.entries(wanted)) {
@@ -692,6 +716,235 @@
 
   const clip = (text, n) => (text.length > n ? `${text.slice(0, n)}…` : text);
 
+  // --- voice mode -------------------------------------------------------------
+  // Talk to Alfred like a phone call. The page connects to OpenAI's live voice model over WebRTC: the
+  // microphone goes up, the voice comes back into <audio>, and the "oai-events" data channel carries
+  // transcripts and delegations. The model only talks. Everything to do or find out it delegates to us:
+  // we run what the user said on Alfred (/api/voice/delegate, source "voice", shown in the log like a
+  // typed command) and hand the model Alfred's reply to say. STOP, the microphone button, closing the
+  // window and reloading the page all end the call.
+  const talk = $("talk");
+  const talkState = $("talk-state");
+  const voiceAudio = $("voice-audio");
+  const TALK = { connecting: "Connecting…", listening: "Listening", working: "Alfred is working on it…" };
+  const CLOSED = {
+    expired: "Voice mode reached its time limit and ended.",
+    content: "OpenAI ended voice mode.",
+    connection_lost: "Voice mode lost its connection to OpenAI.",
+  };
+  const GRACE_MS = 300;  // the last words of a request can arrive just after its delegation
+  const START_MS = 20000;  // OpenAI has this long to start the call
+  const MAX_REQUEST = 4000;  // characters of what was said that go to Alfred
+  let voiceInfo = { available: false, reason: "", message: "Checking whether voice mode is available…" };
+  let live = null;  // the call: { pc, channel, mic, heard, pending, timer, ended }
+
+  // off, unavailable, connecting, listening, working or error. note: the error, or why it's unavailable.
+  function setTalk(state, note) {
+    const on = state in TALK;
+    talk.dataset.state = state;
+    talk.setAttribute("aria-pressed", String(on));
+    talk.setAttribute("aria-disabled", String(state === "unavailable"));
+    talk.title = on ? `${TALK[state]} Press to end voice mode.` : note || "Talk to Alfred (voice mode)";
+    talkState.textContent = on ? TALK[state] : state === "error" ? note : "";
+    talkState.classList.toggle("error", state === "error");
+    talkState.hidden = !talkState.textContent;
+  }
+
+  async function refreshVoice() {
+    try { voiceInfo = await api("GET", "/api/voice/status"); } catch { return; }
+    if (live) return;
+    if (!voiceInfo.available) setTalk("unavailable", voiceInfo.message);
+    else if (talk.dataset.state === "unavailable") setTalk("off");
+  }
+
+  function toggleVoice() {
+    if (live) return endVoice("Voice mode is off.");
+    if (!voiceInfo.available) {
+      line(voiceInfo.message, "error");
+      if (voiceInfo.reason === "key") showView("settings");
+      return;
+    }
+    if (!navigator.mediaDevices || !window.RTCPeerConnection) {
+      setTalk("error", "This window can't do voice mode. Open Alfred in its own window, or in Edge or Chrome.");
+      return;
+    }
+    startVoice();
+  }
+
+  async function startVoice() {
+    const me = live = { pc: null, channel: null, mic: null, heard: [], pending: [], timer: null, ended: false };
+    setTalk("connecting");
+    try {
+      me.mic = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+    } catch (e) {
+      if (live === me) endVoice(micProblem(e), true);
+      return;
+    }
+    if (me.ended) return hangUp(me);  // ended while Windows asked about the microphone
+    me.timer = setTimeout(() => {
+      if (live === me) endVoice("OpenAI didn't start voice mode in time. Try again.", true);
+    }, START_MS);
+    const pc = me.pc = new RTCPeerConnection();
+    pc.ontrack = (e) => {
+      if (live !== me) return;
+      voiceAudio.srcObject = e.streams[0];
+      voiceAudio.play().catch(() => { /* the press that started voice mode lets it play */ });
+    };
+    pc.onconnectionstatechange = () => {
+      if (live === me && pc.connectionState === "failed") endVoice(CLOSED.connection_lost, true);
+    };
+    for (const track of me.mic.getAudioTracks()) pc.addTrack(track, me.mic);
+    const channel = me.channel = pc.createDataChannel("oai-events");
+    channel.onmessage = (e) => {
+      let event;
+      try { event = JSON.parse(e.data); } catch { return; }
+      if (live === me) onLive(me, event);
+    };
+    try {
+      await pc.setLocalDescription(await pc.createOffer());
+      const answer = await postOffer(pc.localDescription.sdp);
+      if (!me.ended) await pc.setRemoteDescription({ type: "answer", sdp: answer });
+    } catch (e) {
+      if (live === me) endVoice(e.message, true);
+    }
+  }
+
+  // The offer goes to Alfred's server, which adds the OpenAI key; OpenAI's answer comes back as SDP.
+  async function postOffer(sdp) {
+    let response;
+    try {
+      response = await fetch("/api/voice/session",
+        { method: "POST", headers: { "X-Alfred": key, "Content-Type": "application/sdp" }, body: sdp });
+    } catch {
+      throw new Error("Alfred isn't answering. Is it still running?");
+    }
+    if (response.ok) return response.text();
+    let data = {};
+    try { data = await response.json(); } catch { /* empty body */ }
+    if (response.status === 401) onSignedOut();
+    throw new Error(data.error || `Alfred answered ${response.status}.`);
+  }
+
+  function micProblem(error) {
+    const name = error && error.name;
+    if (name === "NotAllowedError" || name === "SecurityError") {
+      return "Alfred may not use the microphone. Allow it when Windows or this window asks, then try again.";
+    }
+    if (name === "NotFoundError" || name === "OverconstrainedError") return "No microphone found. Plug one in, then try again.";
+    if (name === "NotReadableError") return "Another app is using the microphone. Close it, then try again.";
+    return "The microphone didn't start. Try again.";
+  }
+
+  function onLive(me, event) {
+    switch (event.type) {
+      case "session.started":
+        clearTimeout(me.timer);
+        setTalk(me.pending.length ? "working" : "listening");
+        line("Voice mode is on. Talk to Alfred, and press the microphone again to end it.");
+        break;
+      case "session.input_transcript.delta":  // what the user says, in pieces
+        if (event.delta) me.heard.push({ at: Number(event.start_ms), text: String(event.delta) });
+        break;
+      case "session.delegation.created":
+        if (event.delegation && event.delegation.target === "client") {
+          delegate(me, String(event.delegation.id), Number(event.offset_ms));
+        }
+        break;
+      case "error":
+        line(`Voice mode: ${(event.error && event.error.message) || "something went wrong."}`, "error");
+        break;
+      case "session.closed":
+        endVoice(CLOSED[event.reason] || "Voice mode ended.", event.reason in CLOSED);
+        break;
+      default:
+        break;
+    }
+  }
+
+  // The model handed us a task. It carries no text: the request is what the user said up to that moment.
+  async function delegate(me, id, offset) {
+    me.pending.push(id);
+    setTalk("working");
+    tell(me, "thinking", id, "Alfred is working on it.");
+    await new Promise((resolve) => { setTimeout(resolve, GRACE_MS); });
+    if (me.ended) return;  // voice mode ended (STOP, the button) before this went to Alfred: drop it
+    const text = takeRequest(me, offset);
+    let answer;
+    if (!text) {
+      answer = "Alfred got no request: nothing was heard. Ask the user to say it again.";
+    } else {
+      try {
+        const result = await api("POST", "/api/voice/delegate", { delegation_id: id, text });
+        answer = `Alfred's answer: ${result.reply}`;
+      } catch (e) {
+        answer = `Alfred couldn't take the request: ${e.message}`;
+      }
+    }
+    me.pending = me.pending.filter((pending) => pending !== id);
+    if (live !== me) return;
+    tell(me, "commentary", id, answer);
+    setTalk(me.pending.length ? "working" : "listening");
+  }
+
+  // Everything said up to the delegation that Alfred hasn't had yet, so a request with a follow-up
+  // ("email Sam" "saying what?" "that I'm late") reaches Alfred whole. Later words wait for the next one.
+  function takeRequest(me, offset) {
+    const said = [];
+    me.heard = me.heard.filter((part) => {
+      if (part.at > offset) return true;
+      said.push(part.text);
+      return false;
+    });
+    const text = said.join("").replace(/\s+/g, " ").trim();
+    return text.length > MAX_REQUEST ? text.slice(-MAX_REQUEST) : text;
+  }
+
+  // Voice can't approve anything: the model asks the user to answer the dialog on screen.
+  function voiceApproval(event) {
+    if (!live) return;
+    tell(live, "thinking", live.pending[0] || null, "Alfred is waiting for the user's OK on screen "
+      + `before it will ${clip(String(event.reason || "go on"), 300)}. Ask the user to choose Allow or Deny in the Alfred window.`);
+  }
+
+  function sendLive(me, event) {
+    const channel = me.channel;
+    if (!channel || channel.readyState !== "open") return;
+    try { channel.send(JSON.stringify(event)); } catch { /* closing */ }
+  }
+
+  // Context for the model, for one delegation or (null) the whole call: "thinking" is silent, and
+  // "commentary" is for it to tell the user.
+  function tell(me, kind, delegationId, content) {
+    sendLive(me, { type: `session.${kind}.append`, content, delegation_id: delegationId });
+  }
+
+  function endVoice(message, failed) {
+    const me = live;
+    if (!me) return;
+    live = null;
+    hangUp(me);
+    voiceAudio.srcObject = null;
+    if (failed) setTalk("error", message);
+    else setTalk(voiceInfo.available ? "off" : "unavailable", voiceInfo.message);
+    if (message) line(message, failed ? "error" : undefined);
+    if (document.hidden) onVisibility();  // a page nobody looks at lets go of its feed again
+  }
+
+  // The microphone stops at once; the connection a moment later, so session.close can reach OpenAI.
+  // Safe to call again: it also lets go of what a start still in progress got after the call ended.
+  function hangUp(me) {
+    me.ended = true;
+    clearTimeout(me.timer);
+    if (me.mic) for (const track of me.mic.getTracks()) track.stop();
+    const { pc } = me;
+    if (!pc) return;
+    sendLive(me, { type: "session.close" });
+    me.pc = me.channel = null;
+    setTimeout(() => pc.close(), 300);
+  }
+
   // --- pages and keys -----------------------------------------------------------
   function showView(name) {
     for (const tab of document.querySelectorAll(".tab")) {
@@ -720,6 +973,7 @@
       }
     });
     stopButton.onclick = stopEverything;
+    talk.onclick = toggleVoice;
     $("reset").onclick = async () => {
       try { await api("POST", "/api/reset"); } catch (e) { line(e.message, "error"); }
     };

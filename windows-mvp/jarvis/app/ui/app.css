@@ -284,6 +284,30 @@ main {
 .composer button { padding: 0 22px; }
 .hint { margin: 6px 0 12px; padding: 0 24px; font-size: 12.5px; color: var(--muted); flex: none; }
 
+/* voice mode: a round glossy microphone next to Send. Blue water while it's on; it breathes while it
+ * connects and while Alfred works. */
+.composer .talk { width: 42px; height: 42px; padding: 0; flex: none; align-self: center; display: grid; place-items: center; }
+.talk svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.talk[aria-pressed="true"] {
+  --_top: var(--aero-primary-top);
+  --_bottom: var(--aero-primary-bottom);
+  --_border: var(--aero-primary-border);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 0 3px var(--aero-glow), 0 0 14px var(--aero-aqua);
+}
+.talk[data-state="connecting"] svg { animation: pulse 1.2s ease-in-out infinite; }
+.talk[data-state="working"] { animation: talk-glow 1.4s ease-in-out infinite; }
+@keyframes talk-glow {
+  50% { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 0 6px var(--aero-glow), 0 0 24px var(--aero-aqua); }
+}
+.talk[data-state="error"] { --_border: var(--aero-note-error-border); color: var(--err); }
+.talk[aria-disabled="true"], .talk[aria-disabled="true"]:hover, .talk[aria-disabled="true"]:active {
+  opacity: 0.55; filter: saturate(0.5); cursor: default; box-shadow: none; transform: none;
+}
+.talk-state { font-weight: 600; color: var(--accent); }
+.talk-state::after { content: " · "; font-weight: 400; color: var(--muted); }
+.talk-state.error { color: var(--err); }
+
 /* activity */
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 4px; }
 .toolbar input { flex: 0 1 220px; min-width: 0; }
@@ -390,4 +414,5 @@ main {
   button { border: 2px solid ButtonText; }
   .tab[aria-current="page"] { border-color: Highlight; }
   .stop { border: 3px solid ButtonText; }
+  .talk[aria-pressed="true"] { border: 3px solid Highlight; }
 }

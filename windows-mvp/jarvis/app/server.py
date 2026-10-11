@@ -13,7 +13,8 @@ one to show its window through /api/instance/show with the instance token from d
 Routes: GET /api/health, /api/status, /api/events (SSE, ids = event seq), /api/settings,
 /api/audit, /api/consent; POST /api/command, /api/stop, /api/approval, /api/reset, /api/restart,
 /api/telegram, /api/consent, /api/quit; PUT /api/settings, /api/secrets/{name};
-DELETE /api/secrets/{name}. Other features add theirs on App.router.
+DELETE /api/secrets/{name}. Other features add theirs on App.router: the setup (/api/onboarding/*,
+onboarding/routes.py) and voice mode (/api/voice/*, voice.py).
 """
 
 import dataclasses
@@ -29,6 +30,7 @@ from urllib.parse import unquote
 from .. import __version__, config, consent, onboarding, settings
 from ..service import NotReady, QueueFull
 from ..service.bridge import KEYS as TELEGRAM_KEYS
+from . import voice
 from .http import HTTPError, Request, Response, Router, make_server, serve_in_thread
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
@@ -60,18 +62,22 @@ SETTINGS = {
     "JARVIS_MAX_STEPS": re.compile(r"[1-9][0-9]?|1[0-9][0-9]|200"),
     "JARVIS_FALLBACKS": _FLAG,
     "TELEGRAM_OWNER_ID": re.compile(r"[0-9]{1,20}"),
+    "OPENAI_LIVE_VOICE": re.compile(r"[a-z][a-z0-9_-]{0,39}"),
+    "OPENAI_LIVE_MODEL": re.compile(r"[A-Za-z0-9][A-Za-z0-9._:@-]{0,99}"),
 }
 LABELS = {
     "JARVIS_MODEL": "Model", "JARVIS_EFFORT": "Effort (low, medium or high)", "JARVIS_SPEAK": "Spoken replies",
     "JARVIS_COMPUTER_USE": "Computer use", "JARVIS_NAME": "PC name (letters, digits, spaces, - and _)",
     "JARVIS_WHISPER_MODEL": "Speech model", "JARVIS_MAX_STEPS": "Max steps (1 to 200)",
     "JARVIS_FALLBACKS": "Fallbacks", "TELEGRAM_OWNER_ID": "Telegram owner ID (digits)",
+    "OPENAI_LIVE_VOICE": "Voice mode voice", "OPENAI_LIVE_MODEL": "Voice mode model",
 }
 DEFAULTS = {
     "JARVIS_MODEL": "claude-opus-5-5", "JARVIS_EFFORT": "low", "JARVIS_SPEAK": "1", "JARVIS_COMPUTER_USE": "1",
-    "JARVIS_WHISPER_MODEL": "base.en", "JARVIS_FALLBACKS": "1",
+    "JARVIS_WHISPER_MODEL": "base.en", "JARVIS_FALLBACKS": "1", **voice.DEFAULTS,
 }
 TELEGRAM_ONLY = frozenset(TELEGRAM_KEYS)  # only the Telegram bridge reads these; the engine needn't restart
+VOICE_ONLY = frozenset(voice.KEYS)  # voice mode reads these when it starts a session: nothing restarts
 EXPIRED = "That approval expired or was already answered."
 
 
@@ -98,6 +104,7 @@ class App:
         self.router = Router()
         self._add_routes()
         self.onboarding = onboarding.register(self.router, service, self.store, shell=self)  # /api/onboarding, /onboarding/
+        self.voice = voice.register(self.router, service, self.store)  # /api/voice
 
     # --- lifecycle --------------------------------------------------------
     def start(self, port: int = 0) -> "App":
@@ -173,6 +180,10 @@ class App:
         if not found:
             raise HTTPError(500, "Alfred's page has no <head>.")
         return Response(200, html.encode("utf-8"), {"Content-Type": TYPES[".html"], "Cache-Control": "no-store"})
+
+    def end_voice(self, reason: str = "closed") -> None:
+        """Tell the window to end voice mode (over the event feed), e.g. when it was closed to the tray."""
+        self.service.bus.publish("voice_off", reason=reason)
 
     def instance_show(self, req: Request) -> Response:
         if not _same(req.header("X-Alfred-Instance"), self.instance_token):
@@ -350,7 +361,7 @@ class App:
 
     def _apply(self, keys: set) -> bool:
         """Restart what reads the changed settings. True if the engine restarts."""
-        engine = bool(keys - TELEGRAM_ONLY)
+        engine = bool(keys - TELEGRAM_ONLY - VOICE_ONLY)
         if engine:
             self.service.restart_engine("settings")
         if keys & TELEGRAM_ONLY:

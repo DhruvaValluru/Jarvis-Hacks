@@ -11,7 +11,7 @@ import time
 
 from . import config
 
-TERMS_VERSION = "2026-10-10"
+TERMS_VERSION = "2026-10-11"
 
 NOTICE = """\
 ================ Alfred: what it does and where your data goes ================
@@ -25,11 +25,13 @@ Your data goes to:
    documents, and screenshots of your screen when it uses computer use or you
    ask it to look.
  - OpenAI, only if OPENAI_API_KEY is set: Telegram voice notes (to transcribe
-   them) and reply text (to make spoken replies).
+   them) and reply text (to make spoken replies). In the app's voice mode, and
+   only while it is on: your microphone audio and Alfred's replies.
  - Telegram and Photon Spectrum, only if you set up Telegram: your messages and
    Alfred's replies pass through their servers.
-Stays on this PC: microphone audio (speech is recognised locally), the spoken
-voice, and the action log at %LOCALAPPDATA%\\Jarvis\\audit.jsonl.
+Stays on this PC: microphone audio outside voice mode (speech is recognised
+locally), the spoken voice, and the action log at
+%LOCALAPPDATA%\\Jarvis\\audit.jsonl.
 
 Stop it any time: Ctrl+C, move the mouse to the top-left corner, or send /stop
 in Telegram. Full notice: windows-mvp\\PRIVACY.md (version {version}).
