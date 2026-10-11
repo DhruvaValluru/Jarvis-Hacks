@@ -7,7 +7,8 @@ It imports every heavy module the app needs, checks that the data files Alfred s
 then starts the engine through AlfredService with a throwaway data folder: no saved settings or keys,
 no Claude, nothing shared with your other PCs. It runs "reset" and "what time is it" (answered on the
 PC; it only reads the clock), presses Stop, waits for the engine to come back, and shuts it down.
-Nothing else on the PC is touched. Exit code 0 when every check passed, 1 otherwise.
+Nothing else on the PC is touched (see NEEDS_WEBVIEW2 for the one module that would otherwise change a
+setting). Exit code 0 when every check passed, 1 otherwise.
 """
 
 import argparse
@@ -48,6 +49,10 @@ WINDOWS_MODULES = (
     "PIL.Image", "PIL.ImageDraw", "psutil", "clr", "webview", "webview.platforms.winforms",
     "webview.platforms.edgechromium", "pystray", "pystray._win32",
 )
+# pywebview's WinForms backend picks its web engine when it's imported. Without the WebView2 Runtime it picks
+# Internet Explorer and writes IE settings for this program into the registry (HKCU\...\FeatureControl), so the
+# self-test only imports it when the runtime is there. edgechromium only loads the WebView2 interop DLLs.
+NEEDS_WEBVIEW2 = ("webview.platforms.winforms",)
 # (package, file inside it): data files and DLLs that are loaded by path, not imported.
 FILES = (
     ("jarvis.app", "ui/index.html"), ("jarvis.app", "ui/app.js"), ("jarvis.app", "ui/app.css"),
@@ -130,19 +135,26 @@ def bundle_checks() -> Iterator[Check]:
             yield path_check(exe, config.app_dir() / exe)
 
 
-def windows_checks() -> Iterator[Check]:
-    if sys.platform != "win32":
+def windows_checks(sys_platform: str = sys.platform, importer: Callable = importlib.import_module,
+                   locate: Callable[[str], Path] = package_dir) -> Iterator[Check]:
+    if sys_platform != "win32":
         yield Check("Windows modules and files", None, "not checked: this isn't Windows")
         return
+    webview2 = _webview2_runtime()  # first: it decides whether NEEDS_WEBVIEW2 may be imported
     if config.frozen():
         # Generated from Windows' UI Automation type library at build time (packaging/build.ps1). Checked
         # first: importing comtypes.client adds a cache folder in %TEMP% to where it could also be found.
-        yield from import_checks(["comtypes.gen.UIAutomationClient"])
-    yield from import_checks(WINDOWS_MODULES)
-    yield from file_checks(WINDOWS_FILES)
+        yield from import_checks(["comtypes.gen.UIAutomationClient"], importer)
+    for name in WINDOWS_MODULES:
+        if name in NEEDS_WEBVIEW2 and not webview2.ok:
+            yield Check(f"import {name}", None, "not checked without the WebView2 Runtime (importing it would change "
+                                                "Internet Explorer settings in the registry)")
+        else:
+            yield from import_checks([name], importer)
+    yield from file_checks(WINDOWS_FILES, locate)
     if not config.frozen():
         yield _uia_type_library()
-    yield _webview2_runtime()
+    yield webview2
 
 
 def _uia_type_library() -> Check:
@@ -156,11 +168,13 @@ def _uia_type_library() -> Check:
 
 
 def webview2_version() -> str:
-    """The Edge WebView2 Runtime's version, or "" when it isn't installed (for the machine or this user)."""
+    """The Edge WebView2 Runtime's version, or "" when it isn't installed (for the machine or this user).
+
+    Where Microsoft documents it for 64-bit Windows, which is also where pywebview looks: whenever this finds
+    it, pywebview uses Edge and not Internet Explorer (NEEDS_WEBVIEW2)."""
     import winreg
 
     places = ((winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\WOW6432Node\\" + WEBVIEW2_CLIENT),
-              (winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\" + WEBVIEW2_CLIENT),
               (winreg.HKEY_CURRENT_USER, "Software\\" + WEBVIEW2_CLIENT))
     for root, key in places:
         try:

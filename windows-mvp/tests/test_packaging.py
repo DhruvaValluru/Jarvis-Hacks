@@ -1,8 +1,11 @@
 """The Windows app bundle and installer (windows-mvp/packaging, built by .github/workflows/alfred-desktop.yml):
 what can be checked without Windows. CI builds, self-tests, installs and uninstalls the real thing."""
 
+import base64
 import importlib.util
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -141,6 +144,47 @@ def test_installer_and_ci_pin_the_same_versions():
     assert all("==" in line for line in build.splitlines() if line and not line.startswith("#"))
 
 
+def test_ci_compiles_with_the_pinned_inno_setup():
+    """The same commit must always give the same installer: CI never takes whatever Inno Setup the runner
+    image or Chocolatey has today, only the version and hash pinned in fetch_innosetup.ps1."""
+    desktop = (WORKFLOWS / "alfred-desktop.yml").read_text(encoding="utf-8")
+    fetch = (PACKAGING / "fetch_innosetup.ps1").read_text(encoding="utf-8")
+    version = re.search(r"\[string\]\$Version = '(\d+)\.(\d+)\.(\d+)'", fetch)
+    assert version and re.search(r"\[string\]\$Sha256 = '[0-9a-f]{64}'", fetch)
+    assert "github.com/jrsoftware/issrc/releases/download/" in fetch and "/PORTABLE=1" in fetch
+    assert "choco" not in desktop
+    run = re.findall(r"run: (.*)", desktop)
+    fetch_step = run.index("./packaging/fetch_innosetup.ps1")
+    assert run[fetch_step + 1] == "./packaging/installer.ps1 -Iscc build\\innosetup\\ISCC.exe"
+    iss = (PACKAGING / "alfred.iss").read_text(encoding="utf-8")
+    floor = tuple(int(n) for n in re.search(r"#if VER < EncodeVer\((\d+), (\d+), (\d+), 0\)", iss).groups())
+    assert tuple(int(n) for n in version.groups()) >= floor
+    pinned = ".".join(version.groups())
+    assert f"Inno Setup {pinned}" in (MVP / "INSTALL.md").read_text(encoding="utf-8")
+    assert "Join-Path $Build 'innosetup\\ISCC.exe'" in (PACKAGING / "installer.ps1").read_text(encoding="utf-8")
+
+
+def _pascal_routine(source: str, header: str) -> str:
+    start = source.index(header)
+    return source[start:source.index("\nend;", start)]
+
+
+def test_an_update_closes_alfred_unless_it_surely_isnt_running():
+    """Only a clean "not running" (0) from the PowerShell check skips closing Alfred. If PowerShell can't run
+    (AppLocker or WDAC on a managed PC: -1), Alfred may be running with its files locked, so Setup closes it
+    anyway; StopAlfred then falls back to taskkill."""
+    iss = (PACKAGING / "alfred.iss").read_text(encoding="utf-8").replace("\r\n", "\n")
+    prepare = _pascal_routine(iss, "function PrepareToInstall(")
+    assert "AlfredProcesses(ExpandConstant('{app}'), 'check')" in prepare
+    checks = re.findall(r"if (.+) then\n\s+Exit;", prepare)
+    assert checks == ["not FileExists(ExpandConstant('{app}\\{#AppExe}'))", "Running = 0"]
+    assert prepare.rstrip().endswith("StopAlfred(ExpandConstant('{app}'));")
+    stop = _pascal_routine(iss, "procedure StopAlfred(")
+    assert "if AlfredProcesses(Dir, 'stop') <> 0 then" in stop
+    assert "taskkill.exe'), '/F /T /IM {#AppExe}'" in stop and "taskkill.exe'), '/F /T /IM {#CliExe}'" in stop
+    assert "Result := -1;" in _pascal_routine(iss, "function AlfredProcesses(")  # PowerShell didn't start
+
+
 def test_the_spec_and_entry_scripts_fit_together():
     spec = (PACKAGING / "alfred.spec").read_text(encoding="utf-8")
     compile(spec, "alfred.spec", "exec")  # at least valid Python
@@ -151,6 +195,31 @@ def test_the_spec_and_entry_scripts_fit_together():
     assert '#define AppExe "Alfred.exe"' in iss and '#define CliExe "alfred-cli.exe"' in iss
     for data in ("PRIVACY.md", "requirements.lock.txt", '"jarvis" / "app" / "ui"'):
         assert data in spec
+
+
+PARSE_PS1 = """$bad = 0
+foreach ($file in $files) {
+  $errors = $null
+  [void][System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$null, [ref]$errors)
+  foreach ($e in $errors) { $bad++; Write-Output ("{0}:{1}: {2}" -f $file, $e.Extent.StartLineNumber, $e.Message) }
+}
+exit $bad
+"""
+
+
+@pytest.mark.skipif(not (shutil.which("powershell") or shutil.which("pwsh")),
+                    reason="needs PowerShell (the Windows CI run has it)")
+def test_the_powershell_scripts_parse():
+    """A script PowerShell can't parse doesn't run at all, e.g. "build\\$art: ..." (a ':' after a variable).
+    Sent as -EncodedCommand, so no execution policy gets in the way."""
+    scripts = sorted(str(path) for path in PACKAGING.glob("*.ps1"))
+    assert len(scripts) >= 5
+    quoted = ", ".join("'" + script.replace("'", "''") + "'" for script in scripts)
+    command = base64.b64encode(f"$files = @({quoted})\n{PARSE_PS1}".encode("utf-16-le")).decode()
+    for shell in filter(None, (shutil.which("powershell"), shutil.which("pwsh"))):
+        out = subprocess.run([shell, "-NoProfile", "-NonInteractive", "-EncodedCommand", command],
+                             capture_output=True, text=True, timeout=120)
+        assert out.returncode == 0, f"{shell}: {out.stdout}{out.stderr}"
 
 
 def test_icon_and_installer_art(tmp_path):

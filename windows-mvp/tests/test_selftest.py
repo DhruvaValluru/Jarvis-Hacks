@@ -78,6 +78,43 @@ def test_windows_checks_are_skipped_elsewhere():
     assert list(selftest.windows_checks()) == [skipped]
 
 
+def _no_webview2():
+    raise OSError("registry unreadable")
+
+
+@pytest.mark.parametrize("runtime", [lambda: "131.0.2903.70", lambda: "", _no_webview2],
+                         ids=["webview2", "no-webview2", "cant-tell"])
+def test_pywebviews_winforms_is_only_imported_with_webview2(runtime, tmp_path, monkeypatch):
+    """Importing webview.platforms.winforms on a PC without the WebView2 Runtime makes pywebview pick Internet
+    Explorer and write IE settings for this program into the registry. The self-test changes nothing on the PC,
+    so it looks for the runtime before importing anything and then leaves that module alone."""
+    calls = []
+
+    def webview2_version():
+        calls.append("look for WebView2")
+        return runtime()
+
+    monkeypatch.setattr(selftest, "webview2_version", webview2_version)
+    monkeypatch.setattr(selftest, "_uia_type_library", lambda: Check("UI Automation type library (comtypes)", True))
+    for frozen in (False, True):
+        calls.clear()
+        monkeypatch.setattr(config, "frozen", lambda frozen=frozen: frozen)
+        checks = list(selftest.windows_checks("win32", importer=calls.append, locate=lambda package: tmp_path))
+        assert calls[0] == "look for WebView2"
+        assert "webview.platforms.edgechromium" in calls and "webview.platforms.mshtml" not in calls
+        winforms = next(c for c in checks if c.name == "import webview.platforms.winforms")
+        found = checks[-1]
+        assert found.name == "Edge WebView2 Runtime"
+        if found.ok:
+            assert "webview.platforms.winforms" in calls and winforms.ok is True
+        else:
+            assert "webview.platforms.winforms" not in calls
+            assert winforms.ok is None and "Internet Explorer settings in the registry" in winforms.detail
+        imported = [c.name.removeprefix("import ") for c in checks if c.name.startswith("import ")]
+        assert imported[-len(selftest.WINDOWS_MODULES):] == list(selftest.WINDOWS_MODULES)  # each one reported
+    assert set(selftest.NEEDS_WEBVIEW2) <= set(selftest.WINDOWS_MODULES)
+
+
 def _fake_node(stdout="v22.23.3\n", code=0, error=None, calls=None):
     def run(cmd, **kwargs):
         if calls is not None:

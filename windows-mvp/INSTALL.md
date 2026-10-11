@@ -52,7 +52,7 @@ Use the installer from a green run: that run built Alfred, self-tested it, insta
 "%LOCALAPPDATA%\Programs\Alfred\alfred-cli.exe" --selftest
 ```
 
-It checks that every part of Alfred is there and loads, starts Alfred's engine with a throwaway data folder (none of your settings or keys, no Claude), asks it "what time is it", presses Stop, waits for a fresh engine and shuts it down. It changes nothing on your PC and ends with `RESULT: PASSED` or a list of what failed. CI runs the same check on every build.
+It checks that every part of Alfred is there and loads (on a PC without the WebView2 Runtime it skips the module for Alfred's window, because loading it there would change Internet Explorer settings), starts Alfred's engine with a throwaway data folder (none of your settings or keys, no Claude), asks it "what time is it", presses Stop, waits for a fresh engine and shuts it down. It changes nothing on your PC and ends with `RESULT: PASSED` or a list of what failed. CI runs the same check on every build.
 
 ## Uninstall
 
@@ -65,7 +65,7 @@ Settings > Apps > Installed apps (Windows 10: Apps & features) > **Alfred** > **
 
 ## Build it yourself
 
-On Windows x64 with Python 3.12 (`setup.bat` sets it up), Node.js 22 and [Inno Setup 6.3 or newer](https://jrsoftware.org/isinfo.php):
+You need Windows x64, Python 3.12 (`setup.bat` sets it up) and Node.js 22. `fetch_innosetup.ps1` gets the Inno Setup version CI uses: it needs no administrator rights and only unpacks it into `build\innosetup`. (Without that, `installer.ps1` uses an installed [Inno Setup 6.3 or newer](https://jrsoftware.org/isinfo.php).)
 
 ```bat
 cd windows-mvp
@@ -73,6 +73,7 @@ setup.bat
 .venv\Scripts\python -m pip install -r requirements.lock.txt -r packaging\requirements-build.txt
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1 -Python .venv\Scripts\python.exe
 dist\Alfred\alfred-cli.exe --selftest
+powershell -ExecutionPolicy Bypass -File packaging\fetch_innosetup.ps1
 powershell -ExecutionPolicy Bypass -File packaging\installer.ps1
 powershell -ExecutionPolicy Bypass -File packaging\check_installer.ps1
 ```
@@ -86,11 +87,12 @@ The last line is optional: it installs the new `dist\Alfred-Setup-<version>.exe`
 | `alfred_app.py`, `alfred_cli.py` | The two programs' entry points |
 | `make_icon.py` | Draws the icon and the installer's pictures in code |
 | `fetch_node.ps1` | Downloads the pinned official Node.js for Windows and checks its SHA-256 against nodejs.org's `SHASUMS256.txt` and the hash pinned in the script |
+| `fetch_innosetup.ps1` | Downloads the pinned Inno Setup from its official GitHub release, checks its SHA-256 against the hash pinned in the script, and unpacks it in portable mode into `build\innosetup` |
 | `installer.ps1`, `alfred.iss` | Inno Setup: `dist\Alfred-Setup-<version>.exe` (it also fetches Microsoft's WebView2 bootstrapper and checks its signature) |
 | `check_installer.ps1` | Silent install, self-test, silent uninstall |
 | `requirements-build.txt` | The exact PyInstaller version |
 
-What's pinned: Python 3.12.10 and `requirements.lock.txt` (the [test spec](TESTING.md)), PyInstaller (`requirements-build.txt`), Node.js 22.23.3 (`fetch_node.ps1`, the same version CI tests with). CI installs the current Inno Setup 6 from Chocolatey if the runner doesn't have it, and prints its version in the log.
+What's pinned: Python 3.12.10 and `requirements.lock.txt` (the [test spec](TESTING.md)), PyInstaller (`requirements-build.txt`), Node.js 22.23.3 (`fetch_node.ps1`, the same version CI tests with) and Inno Setup 6.7.3 (`fetch_innosetup.ps1`; CI always compiles with it, never with the Inno Setup the runner image happens to have; ISCC prints its version in the log).
 
 ## Code signing
 

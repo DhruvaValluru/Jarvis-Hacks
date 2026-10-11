@@ -170,20 +170,32 @@ begin
   Sleep(1000);  { let Windows release the files }
 end;
 
-{ An update while Alfred runs: say so, then close it, so its files can be replaced. }
+{ An update while Alfred runs: say so, then close it, so its files can be replaced. Only 0 from the check
+  means "not running": if PowerShell can't run (blocked by AppLocker or WDAC on managed PCs, for example),
+  Alfred may still be running, and StopAlfred falls back to taskkill. }
 function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Running: Integer;
+  Notice: String;
 begin
   Result := '';
   if not FileExists(ExpandConstant('{app}\{#AppExe}')) then
     Exit;
-  if AlfredProcesses(ExpandConstant('{app}'), 'check') <> 3 then
+  Running := AlfredProcesses(ExpandConstant('{app}'), 'check');
+  if Running = 0 then
     Exit;
+  if Running = 3 then
+    Notice := 'Alfred is running. Setup will close it, and stop anything it is doing, to update it.'
+  else
+  begin
+    Log('Could not check whether Alfred is running (result ' + IntToStr(Running) + '); closing it in case it is.');
+    Notice := 'Setup will close Alfred if it is running, and stop anything it is doing, to update it.';
+  end;
   if not WizardSilent then
   begin
-    if MsgBox('Alfred is running. Setup will close it, and stop anything it is doing, to update it.',
-      mbInformation, MB_OKCANCEL) <> IDOK then
+    if MsgBox(Notice, mbInformation, MB_OKCANCEL) <> IDOK then
     begin
-      Result := 'Alfred is still running. Quit it from its tray icon, then run Setup again.';
+      Result := 'Setup did not close Alfred. Quit it from its tray icon, then run Setup again.';
       Exit;
     end;
   end;

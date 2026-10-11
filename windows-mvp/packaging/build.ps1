@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
   Build Alfred's app folder, dist\Alfred: Alfred.exe, alfred-cli.exe, their shared _internal folder,
-  node\node.exe and the Telegram bridge (telegram\). With -Installer, also the installer (installer.ps1).
+  node\node.exe and the Telegram bridge (telegram\). With -Installer, also the installer (fetch_innosetup.ps1,
+  then installer.ps1).
 
 .DESCRIPTION
   Needs Windows x64, Python 3.12 with requirements.lock.txt and packaging\requirements-build.txt installed,
@@ -112,6 +113,7 @@ try {
   Write-Host ('Built in {0:N0} s. Next: {1}\alfred-cli.exe --selftest' -f ((Get-Date) - $started).TotalSeconds, $App)
 
   if ($Installer) {
+    & (Join-Path $PSScriptRoot 'fetch_innosetup.ps1')  # the Inno Setup version CI uses, in build\innosetup
     & (Join-Path $PSScriptRoot 'installer.ps1')
   }
 } finally {

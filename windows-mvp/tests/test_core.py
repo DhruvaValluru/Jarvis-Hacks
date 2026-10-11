@@ -88,6 +88,29 @@ def test_spec_lock_is_exact():
     assert all(v and v[0].isdigit() for v in pins.values())
 
 
+def test_testing_md_quotes_the_reference_fingerprint(monkeypatch):
+    """TESTING.md gives the fingerprint a machine on the spec prints, so anyone can compare without CI."""
+    import importlib.metadata as md
+    import re
+
+    from jarvis import config, doctor
+
+    text = (config.MVP_DIR / "TESTING.md").read_text(encoding="utf-8")
+    quoted = re.search(r"Current reference \(spec v(\d+)\): `([0-9a-f]{12})`", text)
+    assert quoted, "TESTING.md must quote the current reference fingerprint"
+    assert quoted[1] == doctor.SPEC_VERSION and quoted[2] == doctor.reference_fingerprint()
+
+    # ... and it's what --doctor prints on a machine that matches the lock file, the profile and Node.
+    dists = [SimpleNamespace(metadata={"Name": name}, version=ver) for name, ver in doctor.lock_pins().items()]
+    monkeypatch.setattr(md, "distributions", lambda: dists)
+    monkeypatch.setattr(doctor, "sys", SimpleNamespace(version_info=(*doctor.PYTHON, 10)))
+    monkeypatch.setattr(doctor, "_node_major", lambda: doctor.NODE_MAJOR)
+    for key in doctor.TEST_PROFILE:
+        monkeypatch.delenv(key, raising=False)
+    _, lines = doctor.check()
+    assert lines[-1].startswith(f"SPEC v{doctor.SPEC_VERSION} fingerprint {doctor.reference_fingerprint()} -> ")
+
+
 class FakeScreen:
     """Stands in for the Windows backend: records input instead of sending it."""
 

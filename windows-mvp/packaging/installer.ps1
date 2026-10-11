@@ -3,7 +3,8 @@
   Compile Alfred's installer, dist\Alfred-Setup-<version>.exe, from dist\Alfred (run build.ps1 first).
 
 .DESCRIPTION
-  Needs Inno Setup 6.3 or newer (ISCC.exe; "choco install innosetup" or https://jrsoftware.org/isinfo.php).
+  Needs Inno Setup 6.3 or newer (ISCC.exe). It uses, in this order: -Iscc, build\innosetup\ISCC.exe (the
+  version CI builds with, which packaging\fetch_innosetup.ps1 puts there), ISCC.exe on PATH, an installed Inno Setup.
   Before compiling it prepares, in build\:
     - PRIVACY.txt: the data notice (PRIVACY.md) as the text the installer's notice page shows;
     - webview2\MicrosoftEdgeWebview2Setup.exe: Microsoft's Evergreen bootstrapper for the Edge WebView2
@@ -30,6 +31,8 @@ $WebView2Url = 'https://go.microsoft.com/fwlink/p/?LinkId=2124703'  # Microsoft'
 
 function Find-Iscc {
   if ($Iscc) { return $Iscc }
+  $pinned = Join-Path $Build 'innosetup\ISCC.exe'
+  if (Test-Path $pinned) { return $pinned }
   $onPath = Get-Command 'ISCC.exe' -ErrorAction SilentlyContinue
   if ($onPath) { return $onPath.Source }
   $roots = @(${env:ProgramFiles(x86)}, $env:ProgramFiles, (Join-Path $env:LOCALAPPDATA 'Programs')) | Where-Object { $_ }
@@ -39,12 +42,12 @@ function Find-Iscc {
       if (Test-Path $candidate) { return $candidate }
     }
   }
-  throw 'Inno Setup (ISCC.exe) not found. Install it ("choco install innosetup" or https://jrsoftware.org/isinfo.php) or pass -Iscc <path to ISCC.exe>.'
+  throw 'Inno Setup (ISCC.exe) not found. Run packaging\fetch_innosetup.ps1 (the version CI uses), install it from https://jrsoftware.org/isinfo.php, or pass -Iscc <path to ISCC.exe>.'
 }
 
 if (-not (Test-Path (Join-Path $App 'Alfred.exe'))) { throw "No $App\Alfred.exe: run packaging\build.ps1 first." }
 foreach ($art in @('alfred.ico', 'wizard-large-100.bmp', 'wizard-small-100.bmp')) {
-  if (-not (Test-Path (Join-Path $Build $art))) { throw "No build\$art: run packaging\build.ps1 first (make_icon.py draws it)." }
+  if (-not (Test-Path (Join-Path $Build $art))) { throw "No build\${art}: run packaging\build.ps1 first (make_icon.py draws it)." }
 }
 
 # The version comes from jarvis\__init__.py, like the exes' version resources (alfred.spec).

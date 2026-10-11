@@ -13,7 +13,7 @@ Many people and many agents work on different branches. A test result only means
 | Settings | model `claude-opus-5-5`, effort `low`, speech model `base.en`, fallbacks on, speech off, computer use on, 40 max steps | `test.bat`, `jarvis/doctor.py` (`TEST_PROFILE`) |
 | Tests | unit (everything in `tests\`), Windows smoke, offline voice, Telegram bridge (Node), app self-test | `test.bat` |
 
-`python -m jarvis --doctor` (also run by `setup.bat` and `test.bat`) checks all of this and prints a **fingerprint**. Two machines with the same fingerprint have the same Python minor version, package versions and settings. CI prints the reference fingerprint in its log. **Current reference (spec v3): see the `windows-mvp` CI log** (the `--doctor` line of `setup.bat /ci`).
+`python -m jarvis --doctor` (also run by `setup.bat` and `test.bat`) checks all of this and prints a **fingerprint**. Two machines with the same fingerprint have the same Python minor version, package versions and settings. CI prints the reference fingerprint in its log. **Current reference (spec v3): `06a1e0c4e8cb`**; confirm it against the `windows-mvp` CI log (the `--doctor` line of `setup.bat /ci`).
 
 ## How to test (everyone, every branch)
 
@@ -55,14 +55,14 @@ These need a real microphone, Office or an API key. Run the ones your change tou
 
 Changing `requirements.lock.txt`, the Python version or `TEST_PROFILE` changes everyone's fingerprint, and the exact Node version is what CI tests and the installer ships. Change any of them in its own PR:
 
-1. Edit `requirements.txt` / `requirements-voice.txt` / `requirements-desktop.txt`, then regenerate the lock file for Windows x64 and Python 3.12, keeping the existing pins (`-c`) unless a new package needs a change. pywebview needs `proxy_tools`, which is only published as source, so build its wheel first:
+1. Edit `requirements.txt` / `requirements-voice.txt` / `requirements-desktop.txt`, then regenerate the lock file for Windows x64 and Python 3.12, keeping the existing pins (`-c`) unless a new package needs a change. The resolver picks the newest release that fits, so check the dates of the new pins: take a release that has been out for at least two weeks (pin it with `-c`) unless you need a newer one, and say why in the PR. That's why `pythonnet` is 3.1.0 in spec v3 (3.2 was days old). pywebview needs `proxy_tools`, which is only published as source, so build its wheel first:
    ```
    pip wheel --no-deps proxy_tools==0.1.0 -w tmp
    pip download --platform win_amd64 --python-version 3.12 --only-binary=:all: --find-links tmp -c requirements.lock.txt -r requirements.txt -r requirements-voice.txt -r requirements-desktop.txt pytest -d tmp
    ```
    and write the exact versions of everything in `tmp` into `requirements.lock.txt`. Run this **on Windows**: pip evaluates platform markers for the machine it runs on, so elsewhere it misses Windows-only packages (`colorama`, `pythonnet`, `clr_loader`) and adds Linux ones (`python-xlib`). From Linux or macOS, `uv pip compile --python-platform x86_64-pc-windows-msvc --python-version 3.12 --only-binary :all: --find-links tmp -c requirements.lock.txt requirements.txt requirements-voice.txt requirements-desktop.txt <file with "pytest">` resolves for Windows correctly. (`setup.bat` installs `proxy_tools` from its source package; pip does that by itself.)
-2. Bump `SPEC_VERSION` in `jarvis/doctor.py`.
+2. Bump `SPEC_VERSION` in `jarvis/doctor.py` and write the new reference fingerprint at the top of this file: `python -c "from jarvis import doctor; print(doctor.reference_fingerprint())"` prints it (`tests/test_core.py` checks they match).
 3. A new Node version goes in three places at once: `node-version` in `.github/workflows/windows-mvp.yml`, `NODE_VERSION` in `.github/workflows/alfred-desktop.yml`, and `-Version` plus `-Sha256` in `packaging/fetch_node.ps1` (`tests/test_packaging.py` checks they match).
 4. Tell the team to re-run `setup.bat` after it merges.
 
-Don't add a dependency on a feature branch without doing this. Otherwise the branch tests against a different spec than everyone else. The installer's build tools (`packaging/requirements-build.txt`, PyInstaller) aren't part of the test spec; they are pinned there.
+Don't add a dependency on a feature branch without doing this. Otherwise the branch tests against a different spec than everyone else. The installer's build tools (PyInstaller in `packaging/requirements-build.txt`, Inno Setup in `packaging/fetch_innosetup.ps1`) aren't part of the test spec; they are pinned there.
