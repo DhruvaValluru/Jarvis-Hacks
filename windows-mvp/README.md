@@ -19,7 +19,7 @@ The first voice command downloads the speech model (about 150 MB). With no API k
 
 ## Install the Alfred app (installer)
 
-Don't want Python and batch files? Every CI run builds **`Alfred-Setup-<version>.exe`**, a normal Windows installer: no admin rights, Start menu shortcut, uninstall from Settings > Apps. [INSTALL.md](INSTALL.md) says where to download it (the **Alfred-Setup** artifact of the `alfred-desktop` run on your PR's Checks tab), what to click when SmartScreen says "Unknown publisher" (test builds aren't signed yet), and how to uninstall or build it yourself.
+Don't want Python and batch files? Download **`Alfred-Setup-<version>.exe`** from the [latest release](https://github.com/DhruvaValluru/Jarvis-Hacks/releases/latest), a normal Windows installer: no admin rights, Start menu shortcut, uninstall from Settings > Apps. Every CI run also builds one (the **Alfred-Setup** artifact of the `alfred-desktop` run on your PR's Checks tab). [INSTALL.md](INSTALL.md) says what to click when SmartScreen says "Unknown publisher" (Alfred isn't signed yet), how to uninstall or build it yourself, and how to cut a release.
 
 ## Getting your API key
 
