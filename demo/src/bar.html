@@ -1,0 +1,27 @@
+<!-- web demo: the banner (demo/src/bar.html, put in by demo/build.py) -->
+<div class="demo-bar" role="region" aria-label="About this demo">
+  <div class="demo-bar__row">
+    <span class="demo-badge">Live demo</span>
+    <p class="demo-bar__text"><strong>Alfred's real window, on a simulated PC.</strong>
+      <span class="demo-long">Nothing here touches your computer.</span></p>
+    <nav class="demo-bar__links" aria-label="Alfred">
+      <a class="demo-link demo-link--get" href="https://github.com/DhruvaValluru/Jarvis-Hacks/releases/latest" target="_blank" rel="noopener noreferrer">Get it for Windows</a>
+      <a class="demo-link" href="https://github.com/DhruvaValluru/Jarvis-Hacks" target="_blank" rel="noopener noreferrer">Source</a>
+      <button type="button" class="demo-link" id="demo-replay">Replay the setup</button>
+    </nav>
+  </div>
+  <div class="demo-bar__row demo-try">
+    <span class="demo-try__label" id="demo-try-label">Try</span>
+    <div class="demo-chips" role="group" aria-labelledby="demo-try-label">
+      <button type="button" class="demo-chip" data-command="Open Notepad and type: Call Sam about the report at 3 pm">Type a note</button>
+      <button type="button" class="demo-chip" data-command="Play some music and set the volume to 30%">Play music</button>
+      <button type="button" class="demo-chip" data-command="How is my PC doing? What's using the CPU?">How's my PC?</button>
+      <button type="button" class="demo-chip" data-command="What's on my screen?">What's on screen?</button>
+      <button type="button" class="demo-chip" data-command="Email Sam the quarterly report">Email Sam the report</button>
+      <button type="button" class="demo-chip" data-command="Copy the quarterly report to my laptop">Copy it to my laptop</button>
+      <button type="button" class="demo-chip" data-command="Fill in the sign-up form in Edge and click Submit">Fill in a form</button>
+      <button type="button" class="demo-chip" data-command="Remind me to stretch in 10 seconds">Remind me</button>
+    </div>
+  </div>
+  <p class="demo-bar__msg" id="demo-msg" role="status" hidden></p>
+</div>
