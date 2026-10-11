@@ -116,10 +116,12 @@ def make_server(
     check: Callable[[Request], None] | None = None,
     fallback: Handler | None = None,
     extra_headers: dict | None = None,
+    on_error: Callable[[Request, BaseException], None] | None = None,
 ) -> ThreadingHTTPServer:
     """A threaded server for router. check(req) runs first for every request, routes and static
     files alike, and refuses one by raising HTTPError. authorize(req) guards routes added with
-    auth=True (None allows everything; tests use that). fallback(req) answers unmatched GETs (static files)."""
+    auth=True (None allows everything; tests use that). fallback(req) answers unmatched GETs (static files).
+    on_error(req, exc) hears about every unexpected exception (the app logs them); it must not raise."""
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -166,7 +168,12 @@ def make_server(
             except HTTPError as e:
                 resp = Response.json({"error": e.message}, e.status)
             except Exception as e:  # noqa: BLE001 - never leak a traceback to the page
-                resp = Response.json({"error": f"{type(e).__name__}"}, 500)
+                if on_error is not None:
+                    try:
+                        on_error(req, e)
+                    except Exception:  # noqa: BLE001
+                        pass
+                resp = Response.json({"error": unexpected(e)}, 500)
             self._send(resp)
 
         def _send(self, resp: Response):
@@ -194,6 +201,15 @@ def make_server(
     server = ThreadingHTTPServer((host, port), Handler)
     server.daemon_threads = True
     return server
+
+
+def unexpected(error: BaseException) -> str:
+    """What the page shows for an error nobody planned for: its type, and the missing part's name for an
+    ImportError (a module name holds no secrets). Other messages could hold a key, so they stay out."""
+    if isinstance(error, ImportError):
+        return (f"Alfred is missing one of its parts ({error}). Reinstall Alfred; if that doesn't help, "
+                "send this message to the Alfred team.")
+    return f"Something went wrong in Alfred ({type(error).__name__}). Try again; the details are in Alfred's error log."
 
 
 def serve_in_thread(server: ThreadingHTTPServer) -> threading.Thread:

@@ -709,3 +709,22 @@ def test_tray_icon_is_the_logo_and_survives_a_missing_file(tmp_path):
     assert app_main.LOGO.is_file() and (UI_DIR / "logo.png").is_file()
     fallback = app_main.tray_image(Image, ImageDraw, logo=tmp_path / "missing.png")
     assert fallback.size == (64, 64) and fallback.getpixel((32, 32))[3] == 255
+
+
+def test_error_log_keeps_the_route_and_place_but_not_secret_messages(env):
+    from jarvis.app.http import Request
+    from jarvis.app.server import log_error
+
+    secret = "sk-" + "ant-api03-not-for-the-log"  # a value at run time, as keys are; never in the source
+    try:
+        {}[secret]
+    except KeyError as e:
+        log_error(Request("POST", "/api/onboarding/openai"), e)
+    try:
+        __import__("no_such_alfred_part")
+    except ImportError as e:
+        log_error(Request("GET", "/api/onboarding/settings"), e)
+    text = (config.data_dir() / "errors.log").read_text(encoding="utf-8")
+    assert "POST /api/onboarding/openai" in text and "KeyError" in text and "test_app_server.py" in text
+    assert "sk-ant" not in text
+    assert "No module named 'no_such_alfred_part'" in text

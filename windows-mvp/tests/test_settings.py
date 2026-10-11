@@ -215,3 +215,49 @@ def test_windows_credential_manager_round_trip():
         backend.delete(key)
     assert backend.get(key) is None
     backend.delete(key)  # already gone: no error
+
+
+def test_windows_credential_errors_are_read_without_importing_pywintypes(monkeypatch):
+    """Alfred.exe failed "Check and save" with ModuleNotFoundError: the error type no longer comes from
+    importing pywintypes by name. pywin32's errors carry .winerror; nothing else counts as "not found"."""
+    import types
+
+    from jarvis import settings as s
+
+    class WinError(Exception):
+        def __init__(self, code):
+            super().__init__(code, "CredRead", "message")
+            self.winerror = code
+
+    calls = []
+    fake = types.SimpleNamespace(CRED_TYPE_GENERIC=1)
+
+    def cred_read(target, kind, flags):
+        calls.append(target)
+        if target.endswith("MISSING"):
+            raise WinError(1168)
+        if target.endswith("DENIED"):
+            raise WinError(5)
+        return {"CredentialBlob": "sk-test-value"}
+
+    fake.CredRead = cred_read
+    fake.CredDelete = lambda target, kind, flags: cred_read(target, kind, flags)
+    monkeypatch.setitem(sys.modules, "win32cred", fake)
+    monkeypatch.delitem(sys.modules, "pywintypes", raising=False)
+    monkeypatch.setattr("builtins.__import__", _refusing("pywintypes", __import__))
+    backend = s.WinCredBackend()
+    assert backend.get("MISSING") is None and backend.get("PRESENT") == "sk-test-value"
+    backend.delete("MISSING")  # already gone: fine
+    with pytest.raises(WinError):
+        backend.get("DENIED")
+    with pytest.raises(WinError):
+        backend.delete("DENIED")
+    assert s._winerror(ValueError("x")) is None
+
+
+def _refusing(name, real_import):
+    def guarded(module, *args, **kwargs):
+        if module == name:
+            raise ModuleNotFoundError(f"No module named {name!r}")
+        return real_import(module, *args, **kwargs)
+    return guarded

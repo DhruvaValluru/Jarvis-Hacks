@@ -154,7 +154,22 @@ def windows_checks(sys_platform: str = sys.platform, importer: Callable = import
     yield from file_checks(WINDOWS_FILES, locate)
     if not config.frozen():
         yield _uia_type_library()
+    yield credential_manager()
     yield webview2
+
+
+def credential_manager(backend=None) -> Check:
+    """Read a key that doesn't exist from Windows Credential Manager, the way Alfred reads saved keys (only
+    reads: nothing is written). Catches a build where the setup's "Check and save" would fail."""
+    from .settings import WinCredBackend
+
+    try:
+        found = (backend or WinCredBackend()).get("SELFTEST_NO_SUCH_KEY")
+    except Exception as e:  # noqa: BLE001
+        return Check("Windows Credential Manager (where keys are saved)", False, f"{type(e).__name__}: {e}"[:300])
+    if found is not None:
+        return Check("Windows Credential Manager (where keys are saved)", False, "found a key that shouldn't exist")
+    return Check("Windows Credential Manager (where keys are saved)", True, "reads work")
 
 
 def _uia_type_library() -> Check:

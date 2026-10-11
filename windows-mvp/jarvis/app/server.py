@@ -24,6 +24,7 @@ import re
 import secrets
 import threading
 import time
+import traceback
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -109,7 +110,7 @@ class App:
     # --- lifecycle --------------------------------------------------------
     def start(self, port: int = 0) -> "App":
         self.server = make_server(self.router, "127.0.0.1", port, authorize=self.authorize, check=self._check_host,
-                                  fallback=self.static, extra_headers=SECURITY_HEADERS)
+                                  fallback=self.static, extra_headers=SECURITY_HEADERS, on_error=log_error)
         self.port = self.server.server_address[1]
         self.hosts = {f"127.0.0.1:{self.port}", f"localhost:{self.port}"}
         serve_in_thread(self.server)
@@ -448,6 +449,30 @@ def _text(key: str, value) -> str:
     if not isinstance(value, str):
         raise HTTPError(400, f"{LABELS[key]}: that value doesn't look right.")
     return value.strip()
+
+
+ERROR_LOG_MAX = 512 * 1024
+
+
+def log_error(req: Request, error: BaseException) -> None:
+    """Note an unexpected error in data_dir()/errors.log for whoever fixes it: when, which route, the type
+    and where in the code. The message is kept only for an ImportError (a module name); any other message
+    could hold a key or a token. The log restarts when it passes ERROR_LOG_MAX."""
+    path = config.data_dir() / "errors.log"
+    detail = f": {error}" if isinstance(error, ImportError) else ""
+    where = "".join(traceback.format_tb(error.__traceback__))
+    entry = f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {req.method} {req.path}\n{where}{type(error).__name__}{detail}\n\n"
+    with _ERROR_LOCK:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            mode = "w" if path.exists() and path.stat().st_size > ERROR_LOG_MAX else "a"
+            with open(path, mode, encoding="utf-8") as f:
+                f.write(entry)
+        except OSError:
+            pass
+
+
+_ERROR_LOCK = threading.Lock()
 
 
 def _secret_name(name: str) -> None:

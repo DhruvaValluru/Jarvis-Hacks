@@ -32,12 +32,13 @@ def saved_secret_names(backend) -> list[str]:
 
 def credential_names() -> list[str]:
     """Every "Alfred/<NAME>" generic credential this user has (Windows Credential Manager)."""
-    import pywintypes
     import win32cred
 
     try:
         creds = win32cred.CredEnumerate(settings.CRED_PREFIX + "*", 0) or []
-    except pywintypes.error:  # ERROR_NOT_FOUND: there are none
+    except Exception as e:  # pywintypes.error; ERROR_NOT_FOUND: there are none
+        if settings._winerror(e) is None:
+            raise
         return []
     prefix = settings.CRED_PREFIX
     return sorted(c["TargetName"][len(prefix):] for c in creds if str(c.get("TargetName", "")).startswith(prefix))

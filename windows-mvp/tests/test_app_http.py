@@ -103,3 +103,20 @@ def test_check_runs_before_every_route_and_static_file():
         assert _call(port, "POST", "/nope", {}, {"Host": "evil"})[0] == 403
     finally:
         server.shutdown()
+
+
+def test_unexpected_errors_are_logged_and_name_a_missing_part():
+    seen = []
+    router = Router()
+    router.add("GET", "/api/missing", lambda req: __import__("no_such_alfred_part"), auth=False)
+    router.add("GET", "/api/broken", lambda req: {}["sk-ant-secret-in-a-message"], auth=False)
+    server, port = _server(router, on_error=lambda req, e: seen.append((req.path, type(e).__name__)))
+    try:
+        status, _, data = _call(port, "GET", "/api/missing")
+        assert status == 500 and "no_such_alfred_part" in json.loads(data)["error"]
+        status, _, data = _call(port, "GET", "/api/broken")
+        message = json.loads(data)["error"]
+        assert status == 500 and "KeyError" in message and "sk-ant" not in message  # messages can hold keys
+        assert seen == [("/api/missing", "ModuleNotFoundError"), ("/api/broken", "KeyError")]
+    finally:
+        server.shutdown()

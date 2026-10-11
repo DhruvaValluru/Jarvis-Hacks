@@ -67,13 +67,12 @@ class WinCredBackend:
     persistent = True
 
     def get(self, key: str) -> str | None:
-        import pywintypes
         import win32cred
 
         try:
             cred = win32cred.CredRead(CRED_PREFIX + key, win32cred.CRED_TYPE_GENERIC, 0)
-        except pywintypes.error as e:
-            if e.winerror == _NOT_FOUND:
+        except Exception as e:  # pywintypes.error; not imported by name, which a frozen app may not resolve
+            if _winerror(e) == _NOT_FOUND:
                 return None
             raise
         blob = cred.get("CredentialBlob") or b""
@@ -100,14 +99,19 @@ class WinCredBackend:
         }, 0)
 
     def delete(self, key: str) -> None:
-        import pywintypes
         import win32cred
 
         try:
             win32cred.CredDelete(CRED_PREFIX + key, win32cred.CRED_TYPE_GENERIC, 0)
-        except pywintypes.error as e:
-            if e.winerror != _NOT_FOUND:
+        except Exception as e:  # pywintypes.error (see get)
+            if _winerror(e) != _NOT_FOUND:
                 raise
+
+
+def _winerror(error: Exception) -> int | None:
+    """The Windows error code of a pywin32 error (pywintypes.error), None for anything else."""
+    code = getattr(error, "winerror", None)
+    return code if isinstance(code, int) else None
 
 
 def default_backend():

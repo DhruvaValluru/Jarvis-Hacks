@@ -235,3 +235,18 @@ def test_exit_now_keeps_the_report_and_the_exit_code():
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=str(config.MVP_DIR),
                          timeout=60)
     assert out.returncode == 1 and out.stdout == "RESULT: FAILED: 1 of 2 checks"
+
+
+def test_credential_manager_check_reads_like_the_app():
+    class Missing:
+        def get(self, key):
+            assert key == "SELFTEST_NO_SUCH_KEY"
+            return None
+
+    class Broken:
+        def get(self, key):
+            raise ModuleNotFoundError("No module named 'pywintypes'")
+
+    assert selftest.credential_manager(Missing()).ok is True
+    failed = selftest.credential_manager(Broken())
+    assert failed.ok is False and "pywintypes" in failed.detail
