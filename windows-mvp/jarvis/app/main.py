@@ -282,6 +282,7 @@ class Shell:
             return True
         # pywebview waits for this handler on the window's thread, so hide the window from another one.
         threading.Timer(0.05, self._hide).start()
+        self.app.end_voice("closed")  # the page lives on in the tray, but the microphone mustn't
         if not self._told_tray:
             self._told_tray = True
             self.notify("Alfred is still running in the tray. Use its icon to open Alfred, stop it or quit.")

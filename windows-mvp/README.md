@@ -130,7 +130,7 @@ Settings live in `windows-mvp\.env` (see `.env.example`). The Alfred desktop app
 
 ## Privacy and terms
 
-Setup shows a short data notice and asks you to type `agree`; Alfred doesn't run until you do. It says what goes to Anthropic (requests, window text, screenshots), OpenAI (Telegram voice notes and spoken replies) and Telegram/Photon (your chat), and what stays on the PC. Full text: [PRIVACY.md](PRIVACY.md). Read it again with `jarvis.bat --terms`.
+Setup shows a short data notice and asks you to type `agree`; Alfred doesn't run until you do. It says what goes to Anthropic (requests, window text, screenshots), OpenAI (Telegram voice notes and spoken replies, and your microphone while voice mode is on in the app) and Telegram/Photon (your chat), and what stays on the PC. Full text: [PRIVACY.md](PRIVACY.md). Read it again with `jarvis.bat --terms`.
 
 ## How it works
 

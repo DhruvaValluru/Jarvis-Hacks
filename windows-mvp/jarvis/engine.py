@@ -28,7 +28,8 @@ from .tools.registry import audit
 
 PROTOCOL = 2
 QUEUE_SIZE = 20
-LOCAL_SOURCES = ("desktop", "voice", "console")  # replies to these are also spoken on this PC
+LOCAL_SOURCES = ("desktop", "voice", "console")  # replies to these, and reminders they set, are spoken on this PC
+VOICED = ("voice",)  # but not replies to the app's voice mode: its live voice says them (app/voice.py)
 EXPIRED = "That approval expired or is no longer pending."
 
 
@@ -149,7 +150,7 @@ class Engine:
         current = self.current or {}
         source = current.get("source")
         self.emit({"type": "reply", "id": current.get("id"), "source": source, "text": str(text)})
-        if source in LOCAL_SOURCES and self.speaker and self.speaker.enabled:
+        if source in LOCAL_SOURCES and source not in VOICED and self.speaker and self.speaker.enabled:
             self.speaker.say(str(text))
 
     def announce(self, text, source=None) -> None:

@@ -38,9 +38,16 @@
     </div>
     <form id="composer" class="composer" autocomplete="off">
       <textarea id="input" rows="1" placeholder="Tell Alfred what to do…" aria-label="Command for Alfred"></textarea>
+      <button type="button" id="talk" class="talk" data-state="unavailable" aria-pressed="false" aria-disabled="true"
+        aria-label="Voice mode" aria-describedby="talk-state" title="Checking whether voice mode is available…">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="3" width="6" height="11" rx="3"/>
+          <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg>
+      </button>
       <button type="submit" id="send" class="primary">Send</button>
     </form>
-    <p class="hint"><kbd>Enter</kbd> sends · <kbd>Shift</kbd>+<kbd>Enter</kbd> new line · <kbd>Esc</kbd> jumps to Stop<span id="hotkey-hint"></span>
+    <audio id="voice-audio" autoplay></audio>
+    <p class="hint"><span id="talk-state" class="talk-state" role="status" hidden></span>
+      <kbd>Enter</kbd> sends · <kbd>Shift</kbd>+<kbd>Enter</kbd> new line · <kbd>Esc</kbd> jumps to Stop<span id="hotkey-hint"></span>
       · <button type="button" id="reset" class="link">Start a fresh conversation</button></p>
   </section>
 
@@ -74,6 +81,15 @@
         <span>Computer use<small>Alfred may take screenshots and use your mouse and keyboard when other tools can’t do the job.</small></span></label>
       <label class="check"><input type="checkbox" name="JARVIS_SPEAK">
         <span>Spoken replies<small>Alfred reads its replies aloud on this PC.</small></span></label>
+      <label class="field"><span>Voice mode’s voice</span>
+        <select name="OPENAI_LIVE_VOICE">
+          <option value="marin">Marin (default)</option><option value="alloy">Alloy</option><option value="ash">Ash</option><option value="ballad">Ballad</option>
+          <option value="beacon">Beacon</option><option value="bossa">Bossa</option><option value="cedar">Cedar</option><option value="cinder">Cinder</option>
+          <option value="coral">Coral</option><option value="delta">Delta</option><option value="echo">Echo</option><option value="gleam">Gleam</option>
+          <option value="meridian">Meridian</option><option value="quartz">Quartz</option><option value="ripple">Ripple</option><option value="sage">Sage</option>
+          <option value="shimmer">Shimmer</option><option value="stone">Stone</option><option value="tempo">Tempo</option><option value="verse">Verse</option>
+          <option value="vesper">Vesper</option><option value="willow">Willow</option>
+        </select></label>
       <label class="field"><span>This PC’s name</span>
         <input name="JARVIS_NAME" spellcheck="false" maxlength="30"></label>
       <div class="row"><button type="submit" class="primary">Save</button><span id="settings-msg" class="msg" role="status"></span></div>
