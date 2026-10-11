@@ -1,7 +1,7 @@
 """Telegram for the Alfred app: the Node bridge (telegram/index.mjs) in parent mode.
 
 With ALFRED_BRIDGE_MODE=parent the bridge reads no .env and starts no Python. It sends us JSON lines:
-  command{id,text}  approval{token,approved}  stop  telegram_user{id}  status{state}
+  command{id,text}  approval{token,approved}  stop  telegram_user{id,text}  status{state}
 and we answer with what Telegram should see, in the bridge's own worker format:
   reply{id,text}  notice{text}  approval{token,reason,timeout}  done{id}  ready{after_stop}
 Commands run on the app's one engine with source "telegram"; only their replies and approval
@@ -42,6 +42,7 @@ class TelegramController:
         self.cmd = list(cmd) if cmd else None
         self.state = "off"
         self.last_error = ""
+        self.discovery = False  # the setup is linking an owner: start without one (onboarding/link.py)
         self._lock = threading.Lock()
         self._child: Child | None = None
         self._ids: dict[str, object] = {}  # engine command id -> the bridge's id for it
@@ -49,7 +50,10 @@ class TelegramController:
         self.log: deque[str] = deque(maxlen=100)
 
     def settings(self) -> dict[str, str]:
-        return {**DEFAULTS, **config.child_env(KEYS, self.service.store)}
+        values = {**DEFAULTS, **config.child_env(KEYS, self.service.store)}
+        if self.discovery:
+            values["TELEGRAM_OWNER_ID"] = ""  # over the environment's too: the bridge runs nothing, only reports
+        return values
 
     def configured(self) -> bool:
         values = self.settings()
@@ -143,8 +147,10 @@ class TelegramController:
         elif kind == "stop":
             if not self.service.stop("telegram"):
                 self._send({"type": "notice", "text": "Alfred isn't running on the PC right now."})
-        elif kind == "telegram_user":
-            self.service.bus.publish("telegram_user", id=str(message.get("id", "")))
+        elif kind == "telegram_user":  # discovery mode: someone messaged the bot (the setup's link code?)
+            text = message.get("text")
+            self.service.bus.publish("telegram_user", id=str(message.get("id", "")),
+                                     text=text[:32] if isinstance(text, str) else "")
         elif kind == "status" and message.get("state") in ("running", "discovery"):
             with self._lock:
                 if self._child is not None:

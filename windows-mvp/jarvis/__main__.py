@@ -133,12 +133,18 @@ def main() -> None:
     p.add_argument("--doctor", action="store_true", help="check this PC matches the test spec")
     p.add_argument("--terms", action="store_true", help="show the data notice and accept it")
     p.add_argument("--engine", action="store_true", help=argparse.SUPPRESS)  # the app's engine (engine.py)
+    # The setup's speech model download, when installed (onboarding/speech.py: download_command)
+    p.add_argument("--fetch-speech-model", nargs=2, metavar=("MODEL", "FOLDER"), help=argparse.SUPPRESS)
     args = p.parse_args()
 
     if args.engine:
         from . import engine
 
         sys.exit(engine.main())
+    if args.fetch_speech_model:
+        from .onboarding import speech
+
+        sys.exit(speech.main(args.fetch_speech_model))
 
     if args.terms:
         if consent.accepted():

@@ -26,7 +26,7 @@ import time
 from pathlib import Path
 from urllib.parse import unquote
 
-from .. import __version__, config, consent, settings
+from .. import __version__, config, consent, onboarding, settings
 from ..service import NotReady, QueueFull
 from ..service.bridge import KEYS as TELEGRAM_KEYS
 from .http import HTTPError, Request, Response, Router, make_server, serve_in_thread
@@ -97,6 +97,7 @@ class App:
         self._closing = threading.Event()
         self.router = Router()
         self._add_routes()
+        self.onboarding = onboarding.register(self.router, service, self.store, shell=self)  # /api/onboarding, /onboarding/
 
     # --- lifecycle --------------------------------------------------------
     def start(self, port: int = 0) -> "App":

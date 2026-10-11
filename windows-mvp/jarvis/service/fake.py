@@ -26,6 +26,7 @@ class FakeService:
         self._lock = threading.RLock()
         self._state = "off"
         self._telegram = "off"
+        self._discovery = False
         self._commands: dict[str, dict] = {}
         self._approvals: dict[str, dict] = {}
         self._answers: dict[str, threading.Event] = {}
@@ -137,13 +138,16 @@ class FakeService:
         return True
 
     def start_telegram(self) -> bool:
-        self._telegram = "running"
-        self.bus.publish("telegram", state="running", error="")
+        self._telegram = "discovery" if self._discovery else "running"
+        self.bus.publish("telegram", state=self._telegram, error="")
         return True
 
     def stop_telegram(self) -> None:
         self._telegram = "off"
         self.bus.publish("telegram", state="off", error="")
+
+    def telegram_discovery(self, on: bool) -> None:
+        self._discovery = bool(on)
 
     # reading
     def status(self) -> Status:

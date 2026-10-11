@@ -8,7 +8,7 @@ Events (each also has seq, ts and type): the engine's own messages (accepted, st
 announce, notice, approval, approval_closed, done{id,ok,source,stopped}, ready), plus
   state{state,busy_id,queued}   command{id,source,text}   stop{source}
   crash{code,error,restart_in}  (restart_in is null once it gives up: state crashed)
-  telegram{state,error}         telegram_user{id}
+  telegram{state,error}         telegram_user{id,text}
 """
 
 import json
@@ -245,6 +245,11 @@ class AlfredService:
 
     def stop_telegram(self) -> None:
         self.telegram.stop()
+
+    def telegram_discovery(self, on: bool) -> None:
+        """While the setup links an owner: the bridge starts without one (discovery mode) until this is
+        turned off again. Nothing is saved; restart the bridge for it to take effect."""
+        self.telegram.discovery = bool(on)
 
     # --- reading ----------------------------------------------------------
     def status(self) -> Status:

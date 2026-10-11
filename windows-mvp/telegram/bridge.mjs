@@ -34,7 +34,8 @@ export class Bridge {
     // Discovery never starts the Windows worker or grants access automatically.
     if (!this.ownerId) {
       this.log(`Telegram user ID: ${message.from?.id}. Set TELEGRAM_OWNER_ID locally and restart.`);
-      this.onDiscover(String(message.from?.id ?? ''));
+      // The text (short) lets the Alfred app match the link code its setup shows; it is never run.
+      this.onDiscover(String(message.from?.id ?? ''), (message.text || '').trim().slice(0, 32));
       return;
     }
     if (String(message.from?.id) !== this.ownerId || String(message.chat.id) !== this.ownerId) return;
@@ -106,7 +107,7 @@ export class Bridge {
 }
 
 // Parent mode (ALFRED_BRIDGE_MODE=parent): the Alfred app owns the one engine. Commands, approvals,
-// /stop and discovered user IDs go to the app as JSON lines on `output`; the app answers on `input`
+// /stop and discovered user IDs (with what they typed) go to the app as JSON lines on `output`; the app answers on `input`
 // in the worker's format (reply, notice, approval, done, ready), which the bridge handles as before.
 export function parentLink({ input, output, onClose = () => {}, log = console.error }) {
   let bridge;
@@ -127,6 +128,6 @@ export function parentLink({ input, output, onClose = () => {}, log = console.er
     flushed: () => outbound,
     writeCommand: message => send(message),
     hardStop: async () => send({ type: 'stop' }),
-    discovered: id => send({ type: 'telegram_user', id }),
+    discovered: (id, text) => send({ type: 'telegram_user', id, ...(text ? { text } : {}) }),
   };
 }
