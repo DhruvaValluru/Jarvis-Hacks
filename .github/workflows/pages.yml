@@ -2,8 +2,13 @@
 # https://dhruvavalluru.github.io/Jarvis-Hacks/
 # `python3 demo/build.py` writes the static site to demo/dist/site/. This job puts that folder on the gh-pages
 # branch as one fresh commit (force-pushed, with .nojekyll so Pages serves the files as they are), using only git
-# and the workflow's own token. Pages serves from the gh-pages branch: the first time, the repository owner may
-# need to choose Settings > Pages > "Deploy from a branch" > gh-pages / (root) once. The last step checks that.
+# and the workflow's own token. A commit without demo/build.py has no demo yet: the run warns, publishes nothing
+# and stays green. Going live, in this order (docs/TASKS.md, K14):
+#   1. demo/ is on main, so this runs and fills the gh-pages branch.
+#   2. Once, the repository owner chooses Settings > Pages > "Deploy from a branch" > gh-pages / (root).
+#      The last step checks that.
+#   3. Open the address above and check that the demo loads. Only then link it from the README.
+#   4. Cut the release (windows-mvp/INSTALL.md, "Download a release"), so its notes link to the demo.
 name: pages
 on:
   push:
@@ -26,17 +31,23 @@ jobs:
         with:
           python-version: "3.12"
       - name: Build the web demo
+        id: build
         run: |
           if [ ! -f demo/build.py ]; then
-            echo "::error::There is no demo/build.py in this commit, so there is no web demo to publish. Nothing was deployed."
-            exit 1
+            # Not an error: the workflow can reach main before the demo does.
+            echo "::warning::There is no demo/build.py in this commit, so there is no web demo to publish yet. Nothing was deployed."
+            echo "No web demo in this commit yet (demo/build.py is missing). Nothing was deployed." >> "$GITHUB_STEP_SUMMARY"
+            echo "built=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           python3 demo/build.py
           if [ ! -f demo/dist/site/index.html ]; then
             echo "::error::demo/build.py ran but demo/dist/site/index.html is missing. Nothing was deployed."
             exit 1
           fi
+          echo "built=true" >> "$GITHUB_OUTPUT"
       - name: Publish to the gh-pages branch
+        if: steps.build.outputs.built == 'true'
         run: |
           site=demo/dist/site
           touch "$site/.nojekyll"
@@ -52,6 +63,7 @@ jobs:
           git push --force origin "$commit:refs/heads/gh-pages"
           echo "Pushed $(git ls-tree -r --name-only "$commit" | wc -l) files to gh-pages ($commit)."
       - name: Check that Pages serves the gh-pages branch
+        if: steps.build.outputs.built == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

@@ -1,5 +1,6 @@
 <!-- The notes on every GitHub release of Alfred. The release job in .github/workflows/alfred-desktop.yml fills in
-the version, the installer's SHA-256 and the commit, and adds the "notes" typed in Run workflow at the end. -->
+the version, the installer's SHA-256 and the commit, and adds the "notes" typed in Run workflow at the end.
+If the web demo doesn't load when the job runs, it leaves out the one line with the demo's address. -->
 Alfred is an assistant for your Windows PC. You type or say what you want, like "open Notepad and write a haiku about Mondays" or "put the Excel numbers into my report as a table", and Alfred does it in your apps. Claude plans the steps. Alfred asks before anything that sends, deletes, buys or posts, and its STOP button is always on screen.
 
 **Just want to look first?** Try the web demo. It runs in your browser on a simulated PC, with nothing to install: https://dhruvavalluru.github.io/Jarvis-Hacks/
@@ -38,13 +39,13 @@ To uninstall: Settings > Apps > Installed apps (Windows 10: Apps & features) > *
 - **Approvals.** Before Alfred sends, deletes, buys or posts, runs PowerShell, or lets another of your PCs act on this one, it shows what it wants to do and waits for **Allow** or **Deny**. No answer means no.
 - **STOP.** The big button is always on screen. The tray icon, Ctrl+Alt+Backspace and `/stop` in Telegram do the same. STOP ends what Alfred is doing and lets go of the mouse and keyboard.
 - **Limits.** Alfred never types passwords, payment details or one-time codes, and it stops at the lock screen and admin (UAC) prompts.
-- **Your data.** What you ask, text Alfred reads from your windows, and screenshots while it uses the mouse go to Anthropic (Claude). In voice mode your microphone audio goes to OpenAI. Telegram messages go through Telegram and Photon. Alfred shows you the full notice and only starts after you agree. Your settings stay on your PC, and your keys are kept in Windows Credential Manager. The notice: https://github.com/DhruvaValluru/Jarvis-Hacks/blob/v{{VERSION}}/windows-mvp/PRIVACY.md
+- **Your data.** In short: what you ask goes to Anthropic (Claude), with the text Alfred reads from your windows, documents and clipboard, the active window's title, and screenshots when Alfred uses the mouse or you ask it to look. If you add an OpenAI key, OpenAI gets your microphone audio in voice mode, your Telegram voice notes, and the text of Alfred's spoken replies. Telegram messages go through Telegram and Photon. Alfred shows you the full notice and only starts after you agree. Your settings stay on your PC, and your keys are kept in Windows Credential Manager. The full notice: https://github.com/DhruvaValluru/Jarvis-Hacks/blob/v{{VERSION}}/windows-mvp/PRIVACY.md
 - Alfred can make mistakes. Check anything important.
 
 ## Check your download
 
 SHA-256 of `Alfred-Setup-{{VERSION}}.exe`: `{{SHA256}}`
 
-In PowerShell, `Get-FileHash .\Alfred-Setup-{{VERSION}}.exe` should show the same value. It's also in `SHA256SUMS.txt`.
+In PowerShell, `(Get-FileHash .\Alfred-Setup-{{VERSION}}.exe).Hash.ToLower()` should show the same value. It's also in `SHA256SUMS.txt`.
 
 Built from commit {{COMMIT}} by the `alfred-desktop` workflow, which self-tested the app, installed it silently, self-tested the installed copy and uninstalled it before publishing this release. More: [install guide](https://github.com/DhruvaValluru/Jarvis-Hacks/blob/v{{VERSION}}/windows-mvp/INSTALL.md) · [using the app](https://github.com/DhruvaValluru/Jarvis-Hacks/blob/v{{VERSION}}/windows-mvp/DESKTOP.md)

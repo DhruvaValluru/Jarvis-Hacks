@@ -2,7 +2,9 @@
 what can be checked without Windows. CI builds, self-tests, installs and uninstalls the real thing."""
 
 import base64
+import hashlib
 import importlib.util
+import os
 import re
 import shutil
 import subprocess
@@ -190,7 +192,84 @@ def test_a_release_publishes_the_installer_ci_checked():
     notes = (PACKAGING / "RELEASE_NOTES.md").read_text(encoding="utf-8")
     for placeholder in ("{{VERSION}}", "{{SHA256}}", "{{COMMIT}}"):
         assert placeholder in notes and f"'{placeholder}'" in script
-    assert "Run anyway" in notes and "https://dhruvavalluru.github.io/Jarvis-Hacks/" in notes
+    assert "Run anyway" in notes and ".Hash.ToLower()" in notes  # Get-FileHash alone shows upper case
+    demo = next(s for s in release["steps"] if s.get("id") == "prep")["env"]["DEMO_URL"]
+    assert demo == "https://dhruvavalluru.github.io/Jarvis-Hacks/" and 'grep -v -F "$DEMO_URL"' in script
+    assert len([line for line in notes.splitlines() if demo in line]) == 1  # what's left out when it doesn't load
+
+
+# The workflows' bash steps, run here as GitHub runs them on ubuntu-latest.
+bash_steps = pytest.mark.skipif(sys.platform == "win32" or not (shutil.which("bash") and shutil.which("sha256sum")),
+                                reason="runs the workflows' bash steps (Linux)")
+
+
+def _run_step(run: str, cwd: Path, env: dict) -> subprocess.CompletedProcess:
+    script = cwd.parent / f"{cwd.name}-step.sh"
+    script.write_text(run, encoding="utf-8")
+    return subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", str(script)], cwd=cwd,
+                          env={**os.environ, **env}, capture_output=True, text=True, timeout=60)
+
+
+@bash_steps
+def test_the_release_notes_come_out_right(tmp_path):
+    """The release job's notes step, on a stand-in installer: everything is filled in, the checksum is the
+    lower-case one the notes tell people to compare, and the web demo line is only there when the demo loads
+    (curl is a stand-in too)."""
+    yaml = pytest.importorskip("yaml")
+    desktop = yaml.safe_load((WORKFLOWS / "alfred-desktop.yml").read_text(encoding="utf-8"))
+    prep = next(s for s in desktop["jobs"]["release"]["steps"] if s.get("id") == "prep")
+    demo = prep["env"]["DEMO_URL"]
+    repo = tmp_path / "repo"
+    for path in ("jarvis/__init__.py", "packaging/RELEASE_NOTES.md"):
+        (repo / "windows-mvp" / path).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(MVP / path, repo / "windows-mvp" / path)
+    setup = f"Alfred-Setup-{__version__}.exe"
+    (repo / "release").mkdir()
+    (repo / "release" / setup).write_bytes(b"MZ stand-in")
+    sha256 = hashlib.sha256(b"MZ stand-in").hexdigest()
+    for loads in (True, False):
+        temp = tmp_path / f"demo-loads-{loads}"
+        (temp / "bin").mkdir(parents=True)
+        (temp / "bin" / "curl").write_text(f"#!/bin/sh\nexit {0 if loads else 22}\n", encoding="utf-8")
+        (temp / "bin" / "curl").chmod(0o755)
+        out = _run_step(prep["run"], repo, {
+            **prep["env"], "EXTRA_NOTES": "Built for HackNC.", "GITHUB_SHA": "0123abc",
+            "PATH": f"{temp / 'bin'}{os.pathsep}{os.environ['PATH']}",
+            "RUNNER_TEMP": str(temp), "GITHUB_OUTPUT": str(temp / "output.txt")})
+        assert out.returncode == 0, out.stdout + out.stderr
+        notes = (temp / "notes.md").read_text(encoding="utf-8")
+        assert "{{" not in notes and f"`{sha256}`" in notes and setup in notes and "0123abc" in notes
+        assert (repo / "release" / "SHA256SUMS.txt").read_text(encoding="utf-8") == f"{sha256}  {setup}\n"
+        assert notes.rstrip().endswith("## About this build\n\nBuilt for HackNC.")
+        assert (demo in notes) is loads and ("::warning::" in out.stdout) is not loads
+        assert (temp / "output.txt").read_text(encoding="utf-8") == f"version={__version__}\nsetup={setup}\n"
+
+
+@bash_steps
+def test_pages_waits_for_the_demo(tmp_path):
+    """pages.yml can reach main before demo/ does: without demo/build.py it warns, publishes nothing and stays
+    green. With it, a build that makes no index.html fails, and one that does goes on to publish."""
+    yaml = pytest.importorskip("yaml")
+    steps = yaml.safe_load((WORKFLOWS / "pages.yml").read_text(encoding="utf-8"))["jobs"]["deploy"]["steps"]
+    build = next(s for s in steps if s.get("id") == "build")
+    later = steps[steps.index(build) + 1:]
+    assert later and all(s["if"] == "steps.build.outputs.built == 'true'" for s in later)
+    makes_site = ("from pathlib import Path\n"
+                  "site = Path(__file__).parent / 'dist' / 'site'\n"
+                  "site.mkdir(parents=True)\n"
+                  "(site / 'index.html').write_text('<title>Alfred</title>')\n")
+    for name, build_py, ok, built in (("no-demo", None, True, "false"), ("no-site", "pass\n", False, None),
+                                      ("demo", makes_site, True, "true")):
+        repo = tmp_path / name
+        (repo / "demo").mkdir(parents=True)
+        if build_py:
+            (repo / "demo" / "build.py").write_text(build_py, encoding="utf-8")
+        output, summary = tmp_path / f"{name}-output.txt", tmp_path / f"{name}-summary.md"
+        out = _run_step(build["run"], repo, {"GITHUB_OUTPUT": str(output), "GITHUB_STEP_SUMMARY": str(summary)})
+        assert (out.returncode == 0) is ok, out.stdout + out.stderr
+        written = output.read_text(encoding="utf-8") if output.exists() else ""
+        assert written == (f"built={built}\n" if built else "")
+    assert "Nothing was deployed" in (tmp_path / "no-demo-summary.md").read_text(encoding="utf-8")
 
 
 def _pascal_routine(source: str, header: str) -> str:

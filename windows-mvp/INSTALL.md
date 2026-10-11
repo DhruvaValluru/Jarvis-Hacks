@@ -11,16 +11,17 @@ Alfred also comes as a normal Windows app: an installer wizard, a Start menu sho
 
 ## Download a release
 
-The newest release is always at **<https://github.com/DhruvaValluru/Jarvis-Hacks/releases/latest>**. You don't need a GitHub account.
+The newest release is always at **<https://github.com/DhruvaValluru/Jarvis-Hacks/releases/latest>**. You don't need a GitHub account. (Until the first release is out, that page is empty. Use a [test build](#download-the-installer-test-builds) instead.)
 
 1. Under **Assets**, download `Alfred-Setup-<version>.exe`.
-2. Optional: check the download. In PowerShell, `Get-FileHash .\Alfred-Setup-<version>.exe` should show the SHA-256 in the release notes (and in `SHA256SUMS.txt` next to the installer).
+2. Optional: check the download. In PowerShell, `(Get-FileHash .\Alfred-Setup-<version>.exe).Hash.ToLower()` should show the SHA-256 in the release notes (and in `SHA256SUMS.txt` next to the installer).
 3. [Install](#install) it.
 
 **Cutting a release (maintainers):** on GitHub, open **Actions** > **alfred-desktop** > **Run workflow**, pick the branch, tick **release**, add a line of notes if you like, and press **Run workflow**. (From a terminal: `gh workflow run alfred-desktop.yml --ref main -f release=true`.) The `installer` job builds and checks the installer as on every push. Only if it passes, the `release` job publishes that same installer and its `SHA256SUMS.txt` as the release `v<version>`, with the version from `jarvis\__init__.py` and the notes from [packaging/RELEASE_NOTES.md](packaging/RELEASE_NOTES.md). It's a normal release, so `/releases/latest` points at it.
 
 - **Raise `__version__` in `jarvis\__init__.py` for each new release.** Running it again with the same version replaces that release's installer, checksum and notes instead of failing, but its tag stays on the old commit.
 - GitHub only shows **Run workflow** for workflows on the default branch (`main`).
+- Cut it after the web demo is online ([pages.yml](../.github/workflows/pages.yml) says how), so the notes link to it. If the demo doesn't load when the job runs, the notes leave that line out.
 - Only the `release` job may write to the repository; everything else in the workflow is read-only.
 
 ## Download the installer (test builds)

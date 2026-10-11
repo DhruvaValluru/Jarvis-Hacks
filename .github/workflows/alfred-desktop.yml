@@ -109,6 +109,7 @@ jobs:
         id: prep
         env:
           EXTRA_NOTES: ${{ inputs.notes }}
+          DEMO_URL: https://dhruvavalluru.github.io/Jarvis-Hacks/
         run: |
           version=$(sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' windows-mvp/jarvis/__init__.py)
           if [ -z "$version" ]; then echo "::error::No __version__ in windows-mvp/jarvis/__init__.py."; exit 1; fi
@@ -123,6 +124,11 @@ jobs:
           notes=${notes//'{{VERSION}}'/"$version"}
           notes=${notes//'{{SHA256}}'/"$sha256"}
           notes=${notes//'{{COMMIT}}'/"$GITHUB_SHA"}
+          # The notes link the web demo (pages.yml). Until it loads, leave that line out rather than link a 404.
+          if ! curl -fsSL -o /dev/null --max-time 30 "$DEMO_URL"; then
+            echo "::warning::The web demo ($DEMO_URL) doesn't load, so the release notes leave out the line about it."
+            notes=$(grep -v -F "$DEMO_URL" <<< "$notes")
+          fi
           if [ -n "$EXTRA_NOTES" ]; then notes=$(printf '%s\n\n## About this build\n\n%s' "$notes" "$EXTRA_NOTES"); fi
           printf '%s\n' "$notes" > "$RUNNER_TEMP/notes.md"
           cat release/SHA256SUMS.txt
