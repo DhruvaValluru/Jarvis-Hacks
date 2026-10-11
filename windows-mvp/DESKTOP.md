@@ -1,6 +1,6 @@
 # Alfred desktop app
 
-The Alfred app is a normal window plus a tray icon. You type what you want, watch what Alfred is doing, answer its questions (Allow or Deny), and press **STOP** whenever you like. Telegram runs through the same app, so there is one conversation and one Stop for everything.
+The Alfred app is a normal window plus a tray icon. You type (or say, in [voice mode](#voice-mode)) what you want, watch what Alfred is doing, answer its questions (Allow or Deny), and press **STOP** whenever you like. Telegram runs through the same app, so there is one conversation and one Stop for everything.
 
 To install it like any other Windows app, use the installer: see [INSTALL.md](INSTALL.md). Or run it from source.
 
@@ -53,13 +53,26 @@ An Alfred from before the setup existed (run from source) goes through it once t
 - **STOP** is always on screen. It kills whatever Alfred is doing on the PC (a PowerShell command, computer use, a half-finished action), lets go of the mouse and keyboard, and starts a fresh engine.
 - **Approvals**: before Alfred sends, deletes, buys or posts, or another of your PCs wants to act on this one, a dialog shows what it wants to do and where the request came from (this window, Telegram, voice, another PC). Allow or Deny; no answer within the countdown means no. Whoever answers first (the window or Telegram) wins.
 - **Data notice**: the first time, the window shows the full notice ([PRIVACY.md](PRIVACY.md)). Alfred doesn't start until you press **I agree**.
-- **Settings**: model, effort, computer use, spoken replies, this PC's name; API keys; Telegram on/off and its owner. When Telegram is waiting for an owner and someone messages the bot, Home says so (once) and points to **Settings → Setup → Telegram**, which links your own account with a code; nobody becomes the owner just by messaging the bot. Saving restarts Alfred's engine after what it's doing now. **Setup** opens any step of the first-run setup again and turns "Start Alfred when I sign in" on or off.
+- **Settings**: model, effort, computer use, spoken replies, voice mode's voice, this PC's name; API keys; Telegram on/off and its owner. When Telegram is waiting for an owner and someone messages the bot, Home says so (once) and points to **Settings → Setup → Telegram**, which links your own account with a code; nobody becomes the owner just by messaging the bot. Saving restarts Alfred's engine after what it's doing now. **Setup** opens any step of the first-run setup again and turns "Start Alfred when I sign in" on or off.
 - **Activity**: every action Alfred took on this PC, newest first, with a filter.
+
+## Voice mode
+
+Talk to Alfred like on a phone call. Press the **microphone** next to Send (or Tab to it and press Enter), allow the microphone the first time Windows or the window asks, and just talk. You can interrupt whenever you like.
+
+- The voice you hear is OpenAI's live voice model, GPT-Live-1. It only talks: anything you want done or found out ("open Spotify", "what's on my calendar", "how far is the moon") it hands to Alfred, which runs it on this PC exactly like a typed command. The voice tells you Alfred's answer. Your requests and Alfred's replies appear in the conversation as **You, by voice** and **Alfred, by voice**; Windows' own voice stays quiet for them.
+- **Approvals stay on screen.** When Alfred needs your OK, the dialog appears as usual and the voice asks you to choose Allow or Deny there. Nobody can approve by voice.
+- **Ending it:** press the microphone again, press **STOP** (or any other Stop: the tray icon, Ctrl+Alt+Backspace, `/stop` in Telegram), close the window, or reload it. The microphone turns off at once. A task Alfred already started keeps going (its answer shows in the window) unless you pressed STOP, which stops that too.
+- The button shows what's happening: Listening, Connecting, Alfred is working on it (it glows), or what went wrong (red). It's dimmed when voice mode isn't available; press it to see why (usually: no OpenAI key, which you add in **Settings → API keys**).
+- **Needs** an OpenAI API key with access to `gpt-live-1` (OpenAI may ask you to verify your organization first) and the current data notice: while voice mode is on, your microphone audio goes to OpenAI, and so does the text of Alfred's replies (see [PRIVACY.md](PRIVACY.md)). Sessions aren't stored at OpenAI (`store: false`).
+- **Settings:** the voice is in **Settings → Voice mode's voice** (default `marin`); the model is `OPENAI_LIVE_MODEL` (default `gpt-live-1`) in `settings.env` or `.env`. Changes apply the next time you start voice mode. Use headphones if the voice hears itself through loud speakers.
+
+How it works: the window makes a WebRTC offer and sends it to Alfred's local server (`POST /api/voice/session`), which starts the session at OpenAI with your key and returns OpenAI's answer, so the key never reaches the window. Audio then flows between the window and OpenAI. When the model hands over a task (a "delegation"), the window sends what you said since the last one to `POST /api/voice/delegate`, which runs it on Alfred (source `voice`) and returns the reply for the model to say. The standalone browser demo in `voice/` at the top of the repository is separate and unchanged.
 
 ## Tray icon, closing and quitting
 
 - The tray icon's tooltip shows Alfred's status. Its menu: **Open Alfred**, **Stop everything**, **Quit**.
-- Closing the window keeps Alfred running in the tray (it tells you so the first time), so Telegram and reminders keep working. **Quit** in the tray menu (or in Settings) stops the engine and Telegram and closes Alfred. When Windows signs out, restarts or shuts down, Alfred quits instead of holding it up.
+- Closing the window keeps Alfred running in the tray (it tells you so the first time), so Telegram and reminders keep working. It ends voice mode. **Quit** in the tray menu (or in Settings) stops the engine and Telegram and closes Alfred. When Windows signs out, restarts or shuts down, Alfred quits instead of holding it up.
 - **Ctrl+Alt+Backspace** stops Alfred from any app (Windows). If another app already uses that shortcut, the window says the hotkey is off; use STOP or the tray icon.
 
 ## Where settings live
@@ -95,5 +108,6 @@ In `--no-window` mode the key lives in that browser tab until you close it; pref
 - `jarvis/app/ui/`: plain HTML, CSS and JavaScript, no frameworks or CDNs.
 - `jarvis/app/ui/theme/aero.css`: the Frutiger Aero design system (tokens, glass panels, glossy buttons, STOP, inputs, switches, progress, steps, callouts; light and dark; reduced motion and Windows contrast themes). The setup uses it; the main window can adopt it.
 - `jarvis/onboarding/`: the setup's API (`/api/onboarding/*`, added by `onboarding.register` in `server.py`), its state file, key checks, speech model download, Telegram linking and start-at-sign-in. The pages are `jarvis/app/ui/onboarding/`; `settings-card.js` is the Setup card in Settings.
-- Tests: `tests/test_app_server.py` and `tests/test_onboarding.py` (run anywhere, use `FakeService`). The real engine behind it is tested in `tests/test_service.py`.
+- `jarvis/app/voice.py`: voice mode's API (`/api/voice/status`, `/session`, `/delegate`), the live model's instructions and session settings (client delegation, `store: false`, the only data channel events the page may send). The page's side (WebRTC, the data channel, delegations) is the voice mode section of `app.js`.
+- Tests: `tests/test_app_server.py`, `tests/test_onboarding.py` and `tests/test_voice_live.py` (run anywhere, use `FakeService`). The real engine behind it is tested in `tests/test_service.py`.
 - The installed app: `packaging/` builds `Alfred.exe` (this app, windowed) and `alfred-cli.exe` (the engine `AlfredService` starts when frozen, the self-test `--selftest` in `jarvis/selftest.py`) and the installer; see [INSTALL.md](INSTALL.md#build-it-yourself).
