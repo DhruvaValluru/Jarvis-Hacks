@@ -1,6 +1,6 @@
 # Live task board
 
-_Auto-generated 2026-10-10 20:43 UTC from [TASKS.md](TASKS.md), open PRs and branches. Do not edit; changes are overwritten._
+_Auto-generated 2026-10-11 00:33 UTC from [TASKS.md](TASKS.md), open PRs and branches. Do not edit; changes are overwritten._
 
 **Progress:** 22 of 85 tasks done.
 
@@ -12,6 +12,7 @@ _Auto-generated 2026-10-10 20:43 UTC from [TASKS.md](TASKS.md), open PRs and bra
 | **0.8** | PR #7 (multi-PC control, peer-to-peer tool calls): reconcile with the hub/worker design in `docs/ARCHITECTURE.md` section 3.6 (tasks I1–I6) before merging. Decide: peer-to-peer now and the hub later, or the hub only. Then give it a task ID and merge `main`. | PR #10 (DhruvaValluru, `claude/funny-tesla-rxt8yr`, draft) |
 | **I4** | Handoff: "send this tab/file/clipboard to my laptop". | PR #9 (DhruvaValluru, `communications`, draft) |
 | **I5** | "What's my desktop doing?" from another PC. | PR #9 (DhruvaValluru, `communications`, draft) |
+| **K1** | One-click installer (MSIX or Inno Setup) bundling Python and the lock file; auto-start at login. | PR #10 (DhruvaValluru, `claude/funny-tesla-rxt8yr`, draft) |
 
 ## Ready to start (open, unclaimed, dependencies done)
 
@@ -78,7 +79,6 @@ First 3 per area. Take the lowest number in your area.
 
 **K. Packaging and deployment**
 
-- **K1** One-click installer (MSIX or Inno Setup) bundling Python and the lock file; auto-start at login.
 - **K2** Tray icon with status, mute, settings and Stop.
 - **K3** Code signing plan (certificate, SmartScreen).
 
