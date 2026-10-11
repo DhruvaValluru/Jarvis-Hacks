@@ -119,6 +119,9 @@ def default_backend():
     if sys.platform == "win32":
         try:
             importlib.import_module("win32cred")
+            # CredRead turns a saved key's LastWritten time into a datetime with this, imported from C code.
+            # Without it every saved key fails to read, so keep keys in memory rather than break.
+            importlib.import_module("win32timezone")
             return WinCredBackend()
         except ImportError:
             pass

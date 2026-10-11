@@ -32,6 +32,7 @@ from .. import __version__, config, consent, onboarding, settings
 from ..service import NotReady, QueueFull
 from ..service.bridge import KEYS as TELEGRAM_KEYS
 from . import voice
+from . import http
 from .http import HTTPError, Request, Response, Router, make_server, serve_in_thread
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
@@ -140,7 +141,11 @@ class App:
         runs, Telegram if that's set up and wanted."""
         status = self.service.start()
         if self.autostart_telegram and status.engine != "needs_consent" and self._telegram_wanted():
-            self.service.start_telegram()
+            try:
+                self.service.start_telegram()
+            except Exception as e:  # noqa: BLE001 - the window must open even if Telegram can't start
+                log_error(Request("START", "/telegram"), e)
+                self.service.bus.publish("notice", text=f"Telegram didn't start: {http.unexpected(e)}")
         return status
 
     # --- auth ---------------------------------------------------------------

@@ -41,7 +41,7 @@ WINDOWS_MODULES = (
     "anthropic", "truststore",
     # Windows APIs, COM, UI Automation, volume
     "pythoncom", "pywintypes", "win32api", "win32con", "win32gui", "win32process", "win32job", "win32cred",
-    "win32clipboard", "win32com.client", "comtypes.client", "comtypes.stream", "pycaw.pycaw", "uiautomation",
+    "win32timezone", "win32clipboard", "win32com.client", "comtypes.client", "comtypes.stream", "pycaw.pycaw", "uiautomation",
     "jarvis.tools.wininput", "jarvis.tools.computer",
     # Speech recognition (local Whisper) and the microphone
     "numpy", "sounddevice", "faster_whisper", "ctranslate2", "onnxruntime", "av", "tokenizers", "huggingface_hub",
@@ -159,17 +159,31 @@ def windows_checks(sys_platform: str = sys.platform, importer: Callable = import
 
 
 def credential_manager(backend=None) -> Check:
-    """Read a key that doesn't exist from Windows Credential Manager, the way Alfred reads saved keys (only
-    reads: nothing is written). Catches a build where the setup's "Check and save" would fail."""
+    """Save, read and delete a throwaway key in Windows Credential Manager, the way Alfred handles real ones
+    (it's gone again afterwards). Reading a saved key is what failed in a build that lacked win32timezone;
+    a key that doesn't exist reads fine even then, so this also reads one that does."""
+    import secrets as random
+
     from .settings import WinCredBackend
 
+    name = "Windows Credential Manager (where keys are saved)"
+    backend = backend or WinCredBackend()
+    key, value = f"SELFTEST_{random.token_hex(4).upper()}", random.token_urlsafe(24)
     try:
-        found = (backend or WinCredBackend()).get("SELFTEST_NO_SUCH_KEY")
+        if backend.get("SELFTEST_NO_SUCH_KEY") is not None:
+            return Check(name, False, "found a key that shouldn't exist")
+        backend.set(key, value)
+        try:
+            read = backend.get(key)
+        finally:
+            backend.delete(key)
+        if read != value:
+            return Check(name, False, "a saved key read back differently")
+        if backend.get(key) is not None:
+            return Check(name, False, "a deleted key is still there")
     except Exception as e:  # noqa: BLE001
-        return Check("Windows Credential Manager (where keys are saved)", False, f"{type(e).__name__}: {e}"[:300])
-    if found is not None:
-        return Check("Windows Credential Manager (where keys are saved)", False, "found a key that shouldn't exist")
-    return Check("Windows Credential Manager (where keys are saved)", True, "reads work")
+        return Check(name, False, f"{type(e).__name__}: {e}"[:300])
+    return Check(name, True, "save, read and delete work")
 
 
 def _uia_type_library() -> Check:

@@ -237,16 +237,20 @@ def test_exit_now_keeps_the_report_and_the_exit_code():
     assert out.returncode == 1 and out.stdout == "RESULT: FAILED: 1 of 2 checks"
 
 
-def test_credential_manager_check_reads_like_the_app():
-    class Missing:
+def test_credential_manager_check_saves_reads_and_deletes_a_throwaway_key():
+    from jarvis.settings import MemoryBackend
+
+    store = MemoryBackend()
+    assert selftest.credential_manager(store).ok is True
+    assert store._values == {}  # nothing left behind
+
+    class SavedKeysFail(MemoryBackend):
+        """Like the build without win32timezone: a missing key reads fine, a saved one fails."""
         def get(self, key):
-            assert key == "SELFTEST_NO_SUCH_KEY"
+            if super().get(key) is not None:
+                raise ModuleNotFoundError("No module named 'win32timezone'")
             return None
 
-    class Broken:
-        def get(self, key):
-            raise ModuleNotFoundError("No module named 'pywintypes'")
-
-    assert selftest.credential_manager(Missing()).ok is True
-    failed = selftest.credential_manager(Broken())
-    assert failed.ok is False and "pywintypes" in failed.detail
+    broken = SavedKeysFail()
+    failed = selftest.credential_manager(broken)
+    assert failed.ok is False and "win32timezone" in failed.detail and broken._values == {}

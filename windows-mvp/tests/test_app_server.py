@@ -728,3 +728,18 @@ def test_error_log_keeps_the_route_and_place_but_not_secret_messages(env):
     assert "POST /api/onboarding/openai" in text and "KeyError" in text and "test_app_server.py" in text
     assert "sk-ant" not in text
     assert "No module named 'no_such_alfred_part'" in text
+
+
+def test_alfred_opens_even_when_telegram_cannot_start(app, monkeypatch):
+    """A saved key that couldn't be read made Telegram's start raise, and that stopped Alfred.exe from opening."""
+    def broken():
+        raise ModuleNotFoundError("No module named 'win32timezone'")
+
+    monkeypatch.setattr(app.service, "start_telegram", broken)
+    monkeypatch.setattr(app, "_telegram_wanted", lambda: True)
+    app.autostart_telegram = True
+    status = app.start_service()
+    assert status is not None
+    notices = [e["text"] for e in app.service.bus.events(0, timeout=0) if e["type"] == "notice"]
+    assert any("Telegram didn't start" in t and "win32timezone" in t for t in notices), notices
+    assert "win32timezone" in (config.data_dir() / "errors.log").read_text(encoding="utf-8")

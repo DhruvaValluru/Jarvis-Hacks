@@ -101,6 +101,9 @@ hiddenimports = jarvis_modules() + comtypes_gen_modules() + [
     # pywin32 (imported inside functions all over jarvis)
     "pythoncom", "pywintypes", "win32api", "win32con", "win32gui", "win32process", "win32job", "win32cred",
     "win32clipboard", "win32com", "win32com.client",
+    # pywin32 imports this from C code to turn a credential's LastWritten time into a datetime (CredRead),
+    # so PyInstaller can't see it; without it reading a saved key fails with ModuleNotFoundError.
+    "win32timezone",
     # COM, UI Automation, volume
     "comtypes", "comtypes.client", "comtypes.stream", "comtypes.automation", "comtypes.typeinfo",
     "comtypes.persist", "uiautomation", "pycaw", "pycaw.pycaw",
