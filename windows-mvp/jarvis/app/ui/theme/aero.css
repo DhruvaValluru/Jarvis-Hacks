@@ -117,9 +117,10 @@
   color-scheme: light;
 }
 
-/* Night sky: the same glass and gloss, darker water. */
+/* Night sky: the same glass and gloss, darker water. It follows Windows' dark mode. A page can also
+ * choose with data-theme="light" or "dark" on <html> (the web demo's host does): keep both blocks the same. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --aero-text: #e8f5ff;
     --aero-text-muted: #a9c8de;
     --aero-link: #7fd0ff;
@@ -181,6 +182,68 @@
     --aero-note-error-border: #9a3a3a;
     color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --aero-text: #e8f5ff;
+  --aero-text-muted: #a9c8de;
+  --aero-link: #7fd0ff;
+  --aero-ok: #7ee08f;
+  --aero-warn: #ffcf6e;
+  --aero-error: #ff9c95;
+  --aero-focus: #8fdcff;
+  --aero-focus-halo: rgba(4, 18, 31, 0.9);
+
+  --aero-sky-top: #04121f;
+  --aero-sky-mid: #0d3a5a;
+  --aero-sky-low: #0f4d6e;
+  --aero-sun: rgba(120, 220, 255, 0.28);
+  --aero-ray: rgba(140, 220, 255, 0.05);
+  --aero-bubble: rgba(160, 225, 255, 0.16);
+  --aero-bubble-rim: rgba(170, 230, 255, 0.35);
+  --aero-hill-near: #0f3d26;
+  --aero-hill-near-top: #2f7a3f;
+  --aero-hill-far: #134a30;
+  --aero-hill-far-top: #3b8a4a;
+  --aero-glow: rgba(64, 200, 240, 0.45);
+
+  --aero-glass: rgba(11, 33, 53, 0.72);
+  --aero-glass-strong: rgba(11, 33, 53, 0.88);
+  --aero-glass-border: rgba(140, 210, 255, 0.28);
+  --aero-glass-edge: rgba(0, 0, 0, 0.4);
+  --aero-glass-gloss: linear-gradient(to bottom, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 140px);
+  --aero-inset: rgba(4, 18, 31, 0.6);
+  --aero-inset-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.45);
+  --aero-shadow: 0 18px 44px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+  --aero-shadow-soft: 0 6px 18px rgba(0, 0, 0, 0.45);
+
+  --aero-shine: linear-gradient(to bottom, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.06) 40%,
+    rgba(255, 255, 255, 0) 41%);
+  --aero-button-top: #2a5a80;
+  --aero-button-bottom: #123552;
+  --aero-button-text: #e8f5ff;
+  --aero-button-border: rgba(140, 210, 255, 0.4);
+
+  --aero-input-bg: rgba(4, 18, 31, 0.75);
+  --aero-input-border: #5d87a6;
+  --aero-track: #1a3a55;
+  --aero-toggle-off: #5d87a6;
+  --aero-step-current: #1670bd;
+  --aero-step-done: #1f7a33;
+  --aero-step-todo: #1d4466;
+
+  --aero-note-info-bg: rgba(15, 53, 84, 0.92);
+  --aero-note-info-text: #cfeaff;
+  --aero-note-info-border: #2c6a96;
+  --aero-note-ok-bg: rgba(16, 61, 28, 0.92);
+  --aero-note-ok-text: #c6f5cd;
+  --aero-note-ok-border: #2f7a3f;
+  --aero-note-warn-bg: rgba(61, 43, 6, 0.92);
+  --aero-note-warn-text: #ffe2a8;
+  --aero-note-warn-border: #8a6414;
+  --aero-note-error-bg: rgba(74, 20, 22, 0.92);
+  --aero-note-error-text: #ffd0cc;
+  --aero-note-error-border: #9a3a3a;
+  color-scheme: dark;
 }
 
 /* --- base ------------------------------------------------------------------------------- */
