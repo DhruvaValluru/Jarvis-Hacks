@@ -149,18 +149,6 @@ A SYSTEM service does **not** see inside apps. It runs in session 0 with no desk
 - **Signing:** a code-signing certificate for the app. An **EV certificate + Microsoft Partner Center** are needed only for level 6 drivers; use test-signing on dev machines.
 - **Privileges:** admin once at install. The service runs as SYSTEM; the agent runs elevated or with UI-access rights.
 
-## 8. Build phases
-
-| Phase | Scope | Done when |
-|---|---|---|
-| 0 Single PC | Agent: UI Automation, COM, PowerShell and capture tools over MCP; voice loop; local hub | "Open Spotify and play my focus playlist" works by voice |
-| 1 Service + ETW | SYSTEM service, ETW, named-pipe bridge, event timeline | Build-finished alert works |
-| 2 Two PCs | Hub orchestrator + PC worker job API (heartbeats, retries), pairing, mesh, registry, cross-PC routing, clipboard/tab handoff, browser extension | "Send that tab to my laptop" |
-| 3 Level 6, no drivers | Network rules (study mode), Cloud Files "Jarvis Drive" | Every PC's files appear in File Explorer |
-| 4 Hardening | Permission tiers, confirmations, audit log UI, kill switch, prompt-injection tests | Safe to run daily |
-| 5 Drivers (optional) | Virtual audio, display and input, Microsoft-signed | Phone mic works as the PC's input |
-| 6 Other devices | Phone app (voice, confirmations, notifications), Mac nodes | Control any PC from your phone |
-
 **Stack:**
 - Agent and service: C# / .NET 8, using `TraceEvent` for ETW. Python (`uiautomation`, `pywinauto`) is fine for prototyping.
 - Drivers: C++ with the Windows Driver Kit.
