@@ -32,9 +32,11 @@ MVP = ROOT / "windows-mvp"
 UI = MVP / "jarvis" / "app" / "ui"
 
 TITLE = "Alfred Live Demo"
-# The only other sites the demo links to: the download and the source, both in the demo's banner.
+# The only other sites the demo links to, both in the demo's banner: how to install Alfred on Windows, and
+# the source. (Not /releases/latest until a release exists: today that's an empty page.)
 REPO = "https://github.com/DhruvaValluru/Jarvis-Hacks"
-ALLOWED_URLS = {REPO, f"{REPO}/releases/latest"}
+INSTALL = f"{REPO}/tree/main/windows-mvp#readme"
+ALLOWED_URLS = {REPO, INSTALL}
 
 UI_FILES = [
     "index.html", "app.js", "app.css", "icon.svg", "theme/aero.css",

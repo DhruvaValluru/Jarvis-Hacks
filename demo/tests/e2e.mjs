@@ -1,14 +1,17 @@
 // Alfred's web demo, end to end in headless Chromium. A local tool, not part of CI:
 //
-//   node demo/tests/e2e.mjs [--shots DIR] [--speed N] [--only main|setup|artifact] [--verbose]
+//   node demo/tests/e2e.mjs [--shots DIR] [--speed N] [--only main|setup|artifact|typed] [--verbose]
 //
 // It builds the demo into a temporary folder (python3 demo/build.py --out ...), serves the site under a
 // subpath (/Jarvis-Hacks/, as GitHub Pages does) and the artifact copy at /artifact/ with
 // python3 -m http.server, then drives them like a judge would: every example button, Allow and Deny,
 // an approval left to expire, STOP in the middle of a run (button, and Esc then Enter), two commands
 // in a row, Settings, Activity, and the setup replayed to the end and back. Everything runs at 1280x800
-// and 400x800, in light and dark. It fails on any console error, failed request, error status, request
-// to another site, or a page that scrolls sideways. Screenshots go to --shots (default: a temp folder).
+// and 400x800, in light and dark. Then: typed commands that only half match an example (they must get
+// an honest "can't do that here", not the example), computer use turned off, STOP while Outlook types,
+// and the conversation following new replies after another page or the panel's Hide and Show.
+// It fails on any console error, failed request, error status, request to another site, or a page that
+// scrolls sideways. Screenshots go to --shots (default: a temp folder).
 //
 // Playwright for Node comes from PLAYWRIGHT_MODULE (default /opt/node22/lib/node_modules/playwright/index.mjs);
 // it never installs browsers. PYTHON picks the Python (default python3, or python on Windows).
@@ -32,7 +35,7 @@ for (let i = 2; i < process.argv.length; i += 1) {
   else if (arg === "--only") args.only = process.argv[++i];
   else if (arg === "--verbose") args.verbose = true;
   else {
-    console.error(`Unknown option ${arg}. Use --shots DIR, --speed N, --only main|setup|artifact, --verbose.`);
+    console.error(`Unknown option ${arg}. Use --shots DIR, --speed N, --only main|setup|artifact|typed, --verbose.`);
     process.exit(2);
   }
 }
@@ -82,7 +85,7 @@ for (let i = 0; i < 100; i += 1) {
 }
 
 // --- helpers ------------------------------------------------------------------------------------------------------
-async function open(browser, { width, height = 800, scheme = "light", theme = "", test = {}, motion = "no-preference" }) {
+async function open(browser, { width, height = 800, scheme = "light", theme = "", test = {}, motion = "no-preference", speed = args.speed }) {
   const context = await browser.newContext({ viewport: { width, height }, colorScheme: scheme, reducedMotion: motion });
   const page = await context.newPage();
   await page.addInitScript(({ speed, extra, chosen }) => {
@@ -91,7 +94,7 @@ async function open(browser, { width, height = 800, scheme = "light", theme = ""
     const apply = () => document.documentElement && document.documentElement.setAttribute("data-theme", chosen);
     if (document.documentElement) apply();
     else new MutationObserver((_, watcher) => { if (document.documentElement) { apply(); watcher.disconnect(); } }).observe(document, { childList: true });
-  }, { speed: args.speed, extra: test, chosen: theme });
+  }, { speed, extra: test, chosen: theme });
   page.on("console", (message) => {
     if (message.type() === "error") check(false, `console error: ${message.text()}`);
     else if (message.type() === "warning" && args.verbose) console.log(`  warning: ${message.text()}`);
@@ -170,6 +173,19 @@ async function ready(page) {
   await page.locator('#pill[data-state="ready"]').waitFor({ timeout: 20000 });
 }
 
+// Nothing covers STOP: the element at its middle is STOP itself.
+async function stopInReach(page, where) {
+  const hit = await page.evaluate(() => {
+    const box = document.getElementById("stop").getBoundingClientRect();
+    const found = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return found ? found.id || found.className : "";
+  });
+  check(hit === "stop", `STOP isn't covered ${where} (found: ${hit})`);
+}
+
+// How far the conversation is from its end, in pixels: about 0 when it follows new entries.
+const gap = (page) => page.$eval("#log", (log) => Math.round(log.scrollHeight - log.scrollTop - log.clientHeight));
+
 // --- the main window --------------------------------------------------------------------------------------------
 async function mainWindow(browser, view) {
   const { context, page } = await open(browser, view);
@@ -179,7 +195,8 @@ async function mainWindow(browser, view) {
   check(log.includes("Open Notepad and write a shopping list") && log.includes("Example"), "opens with the example conversation");
   check(await page.locator(".demo-bar").getByText("simulated PC").count() > 0, "the banner says it's a simulated PC");
   check(await page.locator("#demo-pc .demo-pc__title").textContent() === "Simulated PC", "the panel is titled Simulated PC");
-  check(await page.locator('a[href="https://github.com/DhruvaValluru/Jarvis-Hacks/releases/latest"]').count() === 1, "links the Windows download");
+  check(await page.locator('a[href="https://github.com/DhruvaValluru/Jarvis-Hacks/tree/main/windows-mvp#readme"]').count() === 1,
+    "links how to install on Windows");
   await noSideScroll(page, "the main window");
   await shot(page, "1-main");
 
@@ -206,10 +223,14 @@ async function mainWindow(browser, view) {
   let reason = await approval(page);
   check(reason === 'click "Send" in Quarterly report - Message', `the email approval asks about Send (got: ${reason})`);
   check(/\d+ s to answer/.test(await page.locator("#approval-time").textContent()), "the approval counts down");
+  check(await page.evaluate(() => document.querySelector(".demo-bar").inert && document.querySelector(".demo-pc").inert),
+    "the banner and the simulated PC step aside while the approval is open");
+  await stopInReach(page, "by the approval");
   await shot(page, "3-approval");
   await page.click("#allow");
   await reply(page, n, /^Sent\. Sam has the quarterly report/);
   await line(page, "Allowed (answered by this window).");
+  check(!(await page.evaluate(() => document.querySelector(".demo-bar").inert)), "the banner is back after the approval");
 
   n = await replyCount(page);
   await type(page, "email sam the quarterly report again");
@@ -223,10 +244,14 @@ async function mainWindow(browser, view) {
   reason = await approval(page);
   check(reason.startsWith('copy_file({"from_pc": "Desktop", "from_path": "C:\\\\Users\\\\Alex\\\\Documents\\\\Quarterly report.pdf"'),
     `the copy asks with copy_file's arguments (got: ${reason.slice(0, 80)})`);
+  await stopInReach(page, "by the copy's approval");
   await page.click("#allow");
   try {
     await page.locator("#demo-laptop .lp-ask").waitFor({ state: "visible", timeout: 10000 });
     check((await page.locator("#demo-laptop .lp-reason").textContent()).includes("asked by Desktop, another PC"), "the laptop asks its own user");
+    await page.waitForTimeout(400); // the laptop scrolls into view
+    const allow = await page.locator("#demo-laptop .lp-btn--allow").boundingBox();
+    check(allow && allow.y >= 0 && allow.y + allow.height <= view.height, `the laptop's Allow is on screen (${allow && Math.round(allow.y)})`);
     await shot(page, "4-laptop");
   } catch {
     check(false, "the laptop never asked");
@@ -375,6 +400,7 @@ async function setup(page) {
   await next.click();
   await step("anthropic");
   check(await next.isDisabled(), "Next waits for a key");
+  check(await page.locator('.step[data-step="anthropic"] .demo-keynote').isVisible(), "the key field says no real key is needed");
   await page.fill("#anthropic-key", "not a key");
   await page.click("#anthropic-check");
   await page.locator("#anthropic-msg", { hasText: "That doesn't look like an API key." }).waitFor();
@@ -479,6 +505,123 @@ async function artifact(browser, view) {
   await context.close();
 }
 
+// --- typed commands that only half match an example -------------------------------------------------------------------
+// Each must get an honest answer (or do exactly what was said), never the nearest example: no approval,
+// no other recipient, file, app or form.
+const UNKNOWN = /^In this web demo I only run a few example tasks on a simulated PC, so I can't do that one here\./;
+const TYPED = [
+  ["email my boss the report", UNKNOWN],
+  ["send the report to my boss", UNKNOWN],
+  ["Email the report to my boss", UNKNOWN],
+  ["send Sam a message on Slack", /^In this web demo I can only email Sam the quarterly report, in Outlook, so I can't do that one here\./],
+  ["Send Sam the report on Teams", /^In this web demo I can only email Sam the quarterly report, in Outlook,/],
+  ["email Sam the report and my photos", /^In this web demo I can only email Sam the quarterly report, so/],
+  ["Email Sam", /^What should the email to Sam say\?/],
+  ["click the start button", UNKNOWN],
+  ["fill in my tax form", /^In this web demo the only form I can fill in is the meetup's sign-up form in Edge/],
+  ["copy my photos to the laptop", /^In this web demo the only file I can copy to your laptop is the quarterly report/],
+  ["copy notes.txt to laptop", /^In this web demo the only file I can copy to your laptop is the quarterly report/],
+  ["How is my laptop doing?", /^In this web demo your laptop only receives files from this PC/],
+  ["Open Notepad and type: The meeting moved to 4 pm", /^Done\. Notepad is open and says: “The meeting moved to 4 pm”$/],
+  ["open notepad and write my address is 12 Oak St", /^Done\. Notepad is open and says: “my address is 12 Oak St”$/],
+  ["type it in notepad: hello", /^Done\. Notepad is open and says: “hello”$/],
+  ["Open notepad and write: a reminder to call mom", /^Done\. Notepad is open and says: “a reminder to call mom”$/],
+  ["open notepad and write a letter to grandma", /^In this web demo I can't write that one\./],
+  ["make a to-do list", /^Done\. Notepad is open with a to-do list: send Sam the quarterly report, book the dentist/],
+  ["list my files", UNKNOWN],
+  ["Close all windows", /^In this web demo I close one window at a time, like “close notepad”\. Open now: /],
+  ["close outlook", /^Outlook isn't open, so there's nothing to close\./],
+  ["open chrome", /^There's no Chrome on this simulated PC\. It has Notepad, Media Player, File Explorer, Microsoft Edge, Outlook and Task Manager\./],
+  ["Open Spotify", /^There's no Spotify on this simulated PC\./],
+  ["play music on spotify", /^There's no Spotify on this simulated PC: it plays music in Media Player\./],
+  ["remind me in 2 hours to call mom", /^Okay, I'll remind you to call mom in 2 hours\.$/],
+];
+
+async function typed(browser, view) {
+  const { context, page } = await open(browser, view);
+  await page.goto(`${ORIGIN}/Jarvis-Hacks/`);
+  await ready(page);
+  const asked = () => page.locator("#log .entry", { hasText: "Alfred asked:" }).count();
+  const clicks = () => page.locator("#log .entry.step", { hasText: "left_click" }).count();
+  const [asks, clicked] = [await asked(), await clicks()];
+  for (const [command, pattern] of TYPED) {
+    const n = await replyCount(page);
+    await type(page, command);
+    await reply(page, n, pattern);
+    await ready(page);
+  }
+  check(await asked() === asks, "none of them asked for an approval");
+  check(await page.locator("#log .entry.step", { hasText: "sam.rivera@contoso.com" }).count() === 0, "none of them wrote to Sam");
+  await page.locator("#log .entry.announce", { hasText: "Reminder: Time to call mom." }).waitFor({ timeout: 20000 })
+    .then(() => check(true, "the reminder says “Time to call mom.”"), () => check(false, "the reminder never said “Time to call mom.”"));
+
+  // Computer use off (Settings): the form isn't filled in, and no screenshot, click or typing happens.
+  await page.click('.tab[data-view="settings"]');
+  await page.locator('input[name="JARVIS_COMPUTER_USE"]').waitFor();
+  await page.waitForFunction(() => document.querySelector('input[name="JARVIS_COMPUTER_USE"]').checked, null, { timeout: 10000 });
+  await page.uncheck('input[name="JARVIS_COMPUTER_USE"]');
+  await page.click('#settings-form button[type="submit"]');
+  await page.locator("#settings-msg", { hasText: "Saved. Alfred restarts to use it" }).waitFor({ timeout: 10000 });
+  await page.click('.tab[data-view="home"]');
+  await ready(page);
+  let n = await replyCount(page);
+  await chip(page, "Fill in a form");
+  await reply(page, n, /^I can't fill in that form with computer use turned off\./);
+  check(await clicks() === clicked && await asked() === asks, "with computer use off, no clicks and no approval");
+  await context.close();
+}
+
+// STOP while Outlook types the email: the body keeps only what was typed (slowed down to catch it).
+async function stopWhileTyping(browser, view) {
+  const { context, page } = await open(browser, { ...view, speed: 0.5 });
+  await page.goto(`${ORIGIN}/Jarvis-Hacks/`);
+  await ready(page);
+  await chip(page, "Email Sam");
+  await line(page, "'field': 'Message body'");
+  await page.waitForTimeout(1100);
+  await page.click("#stop");
+  await line(page, "Ready again.");
+  const body = (await page.locator("#demo-desktop .ol-body").textContent()) || "";
+  check(body.length > 0 && body.length < 60, `STOP leaves the email body half typed (${body.length} letters)`);
+  await context.close();
+}
+
+// The conversation keeps following new replies: after Activity was open mid-run, and after the
+// simulated PC's Hide and Show (phones).
+async function follows(browser, view) {
+  const { context, page } = await open(browser, view);
+  await page.goto(`${ORIGIN}/Jarvis-Hacks/`);
+  await ready(page);
+  let n = await replyCount(page);
+  await chip(page, "How's my PC");
+  await page.click('.tab[data-view="activity"]');
+  await reply(page, n, /^Your PC is doing fine\./);
+  await page.click('.tab[data-view="home"]');
+  check(await gap(page) < 80, `back from Activity, the conversation is at its end (${await gap(page)} px away)`);
+  for (const [i, command] of ["What's on my screen?", "volume 20", "what time is it"].entries()) {
+    if (view.width < 1000 && i > 0) await page.click("#demo-pc-toggle"); // Hide, then Show
+    n = await replyCount(page);
+    await type(page, command);
+    await reply(page, n, /./);
+    await page.waitForTimeout(300);
+    check(await gap(page) < 80, `the reply to "${command}" is in view (${await gap(page)} px from the end)`);
+  }
+  // Scrolled up to read: new entries don't pull the reader down. Sending a command does.
+  n = await replyCount(page);
+  await type(page, "How is my PC doing?");
+  await steps(page, 1); // "thinking...": the command is on screen
+  await page.$eval("#log", (log) => { log.scrollTop = 0; });
+  await reply(page, n, /^Your PC is doing fine\./);
+  check(await page.$eval("#log", (log) => log.scrollTop) === 0, "a reader who scrolled up stays where they are");
+  n = await replyCount(page);
+  await chip(page, "What's on screen");
+  await reply(page, n, /^Besides my window/);
+  await page.waitForTimeout(300);
+  check(await gap(page) < 80, "a new command brings the conversation back to its end");
+  await shot(page, "follows");
+  await context.close();
+}
+
 // --- run ---------------------------------------------------------------------------------------------------------------
 const VIEWS = [
   { width: 1280, height: 800, scheme: "light" },
@@ -500,6 +643,16 @@ try {
     console.log("an approval left to expire; leaving the setup half way");
     await expiry(browser, VIEWS[0]);
     await leaveSetup(browser, VIEWS[1]);
+  }
+  if (!args.only || args.only === "typed") {
+    console.log("typed commands that only half match; computer use off; STOP while typing; following replies");
+    label = "typed-1280x800-light";
+    await typed(browser, VIEWS[0]);
+    await stopWhileTyping(browser, VIEWS[0]);
+    for (const view of [VIEWS[0], VIEWS[1]]) {
+      label = `follows-${view.width}x${view.height}-${view.scheme}`;
+      await follows(browser, view);
+    }
   }
   if (!args.only || args.only === "artifact") {
     for (const [view, theme] of [[VIEWS[0], "dark"], [VIEWS[1], "light"]]) {

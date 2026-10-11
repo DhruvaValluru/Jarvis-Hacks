@@ -330,7 +330,7 @@
   // What a scenario gets: the engine's outputs (status, reply, approval), paced and stoppable.
   function makeRun(cmd, gen) {
     const run = {
-      id: cmd.id, source: cmd.source, text: cmd.text,
+      id: cmd.id, source: cmd.source, // (run.text, below, is the brain's "text" status line)
       get pc() { return Demo.desktop; },
       get stopped() { return gen !== engine.gen; },
       check() { if (gen !== engine.gen) throw new Stopped(); },
@@ -1018,7 +1018,7 @@
     const start_ = Date.now() - 4 * 60000;
     let t = start_;
     const at = (ms) => { t += ms; return t; };
-    publish("ready", { after_stop: false, released: 0, version: DATA.version, has_llm: true, computer_use: true,
+    publish("ready", { after_stop: false, released: 0, version: DATA.version, has_llm: true, computer_use: computerUse(),
       name: pcName(), protocol: 2 }, at(0));
     publish("state", { state: "ready", busy_id: null, queued: 0 }, at(10));
     publish("notice", { text: "Example: a command from earlier on this simulated PC. Your turn is below." }, at(30000));
@@ -1049,7 +1049,7 @@
   }
 
   Demo.server = {
-    submit, stop, status, publish, hint,
+    submit, stop, status, publish, hint, computerUse,
     // "Replay the setup": a new PC in the setup; finishing it (or coming back) restores this one's keys.
     replaySetup() {
       const before = clone({ ...saved, before: null });

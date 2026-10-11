@@ -52,16 +52,17 @@
     clip: '<svg viewBox="0 0 20 20"><path d="M13.5 6.5l-6 6a1.8 1.8 0 0 0 2.5 2.5l6.5-6.5a3.2 3.2 0 0 0-4.5-4.5L5.5 10.5a4.6 4.6 0 0 0 6.5 6.5l4-4" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>',
   };
 
-  // The apps on the simulated PC: where their window sits, and the names Alfred knows them by.
+  // The apps on the simulated PC: where their window sits, and the names Alfred knows them by. Only their
+  // own names: "open chrome" must not open Edge.
   const APPS = {
     notepad: { name: "Notepad", title: "Untitled - Notepad", process: "Notepad.exe", box: [84, 18, 340, 222],
       aliases: ["notepad", "note pad", "notes", "text editor"] },
     player: { name: "Media Player", title: "Media Player", process: "Microsoft.Media.Player.exe", box: [470, 244, 300, 196],
-      aliases: ["media player", "music", "music player", "player", "spotify", "groove", "windows media player"] },
+      aliases: ["media player", "music", "music player", "player", "groove", "windows media player"] },
     explorer: { name: "File Explorer", title: "Documents - File Explorer", process: "explorer.exe", box: [44, 178, 392, 252],
       aliases: ["file explorer", "explorer", "files", "documents", "folder", "this pc"] },
     edge: { name: "Microsoft Edge", title: "Sign up - Contoso Events - Microsoft Edge", process: "msedge.exe", box: [292, 34, 474, 346],
-      aliases: ["microsoft edge", "edge", "browser", "web browser", "chrome", "internet", "sign up form", "form"] },
+      aliases: ["microsoft edge", "edge", "browser", "web browser", "internet", "sign up form", "form"] },
     outlook: { name: "Outlook", title: "Inbox - Alex Morgan - Outlook", process: "olk.exe", box: [84, 14, 632, 428],
       aliases: ["outlook", "mail", "email", "e mail", "inbox", "new outlook"] },
     taskmgr: { name: "Task Manager", title: "Task Manager", process: "Taskmgr.exe", box: [318, 30, 440, 330],
@@ -157,7 +158,7 @@
       for (const [icon, label] of [["recycle", "Recycle Bin"], ["pdf", "Quarterly report.pdf"]]) {
         const item = el("div", "dk-desk-icon");
         item.append(icon === "recycle" ? svg('<svg viewBox="0 0 20 20"><path d="M5 6h10l-1 11H6z" fill="#cfe3f5" stroke="#5b87a8"/><path d="M4 6h12M8 6V4h4v2" stroke="#5b87a8"/></svg>') : svg(ICONS.pdf),
-          el("span", null, label));
+          el("span", "dk-desk-label", label));
         icons.append(item);
       }
       root.append(icons);
@@ -490,6 +491,7 @@
       return this.findApp(q);
     }
     name(key) { return APPS[key].name; }
+    apps() { return Object.values(APPS).map((app) => app.name); }
     title(key) { return this.windows[key].node.title_.textContent; }
     isOpen(key) { return this.windows[key].open; }
 
@@ -550,22 +552,27 @@
     }
 
     // --- Notepad ---------------------------------------------------------------------------------------------------
+    // Notepad keeps what was typed: after a Stop half way, only the letters that made it (what Alfred
+    // reports when it looks at the screen).
     async typeNotepad(text, perChar = 22) {
       const gen = this.gen;
-      this.notepad = text;
       this.notepadSaved = false;
       if (this.instant) {
+        this.notepad = text;
         this.renderNotepad();
         return;
       }
       this.npText.classList.add("is-typing");
       const step = Math.max(1, Math.ceil(text.length / 90)); // long text: a few letters at a time
-      for (let i = 0; i <= text.length; i += step) {
-        if (gen !== this.gen) break;
-        this.renderNotepad(text.slice(0, i));
+      for (let i = 0; i <= text.length && gen === this.gen; i += step) {
+        this.notepad = text.slice(0, i);
+        this.renderNotepad();
         await wait(perChar);
       }
-      if (gen === this.gen) this.renderNotepad();
+      if (gen === this.gen) {
+        this.notepad = text;
+        this.renderNotepad();
+      }
       this.npText.classList.remove("is-typing");
     }
 
@@ -670,10 +677,10 @@
           node.textContent = text.slice(0, i);
           await wait(16);
         }
-        node.textContent = text;
+        if (gen === this.gen) node.textContent = text; // after a Stop, only what was typed
       }
       node.classList.remove("is-typing");
-      if (field === "subject") this.setTitle("outlook", `${text} - Message - Outlook`);
+      if (field === "subject" && gen === this.gen) this.setTitle("outlook", `${text} - Message - Outlook`);
     }
 
     async attach(name, size) {
@@ -798,9 +805,12 @@
     }
 
     // --- the laptop -------------------------------------------------------------------------------------------------------------------
-    // On narrow screens only one PC shows: the laptop comes forward while something happens there.
-    showMachine(name) {
-      if (this.panel) this.panel.dataset.focus = name;
+    // On narrow screens only one PC shows: the laptop comes forward while something happens there. With
+    // `after` (ms), it changes then, unless something else is shown first.
+    showMachine(name, after = 0) {
+      clearTimeout(this.machineTimer);
+      if (after) this.machineTimer = setTimeout(() => this.showMachine(name), after / SPEED);
+      else if (this.panel) this.panel.dataset.focus = name;
     }
 
     // Alfred on the laptop asks its user. The viewer may answer; otherwise the laptop's user allows it.
@@ -808,6 +818,9 @@
       const gen = this.gen;
       this.lpReason.textContent = reason;
       this.lpAsk.hidden = false;
+      // On a short screen the laptop may be below the panel's fold: bring it into view.
+      const machine = this.laptopRoot.closest(".demo-machine");
+      if (this.mounted && machine) machine.scrollIntoView({ block: "nearest", behavior: this.instant ? "auto" : "smooth" });
       this.lpAllow.disabled = this.lpDeny.disabled = false;
       this.lpBar.style.transition = "none";
       this.lpBar.style.width = "100%";

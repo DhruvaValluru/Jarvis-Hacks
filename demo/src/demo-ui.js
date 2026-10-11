@@ -39,12 +39,34 @@
     chip.addEventListener("click", () => send(chip.dataset.command));
   }
 
+  // The setup's key fields say, right where a key would go, that this is the demo: no real key is
+  // needed, and what is pasted stays in this tab (the stand-in keeps only a hint, like "sk-ant-...4f2c").
+  for (const id of ["anthropic-key", "openai-key", "bot-token", "spectrum-secret"]) {
+    const field = $(id);
+    const label = field && field.closest("label");
+    if (!label) continue;
+    const note = document.createElement("p");
+    note.className = "demo-keynote";
+    note.textContent = "Web demo: you don't need a real key. Any text that looks like one works, and it never leaves this tab.";
+    label.after(note);
+  }
+
   const replay = $("demo-replay");
   if (replay) {
     replay.addEventListener("click", () => {
       if (Demo.server) Demo.server.replaySetup();
       location.href = "onboarding/index.html";
     });
+  }
+
+  // While Alfred's approval is open it is the thing to answer: the banner and the simulated PC step
+  // aside (no Tab, no clicks) until it closes. STOP stays in reach.
+  const sheet = $("approval");
+  if (sheet) {
+    const modal = () => {
+      for (const node of document.querySelectorAll(".demo-bar, .demo-pc")) node.inert = !sheet.hidden;
+    };
+    new MutationObserver(modal).observe(sheet, { attributes: true, attributeFilter: ["hidden"] });
   }
 
   const panel = $("demo-pc");

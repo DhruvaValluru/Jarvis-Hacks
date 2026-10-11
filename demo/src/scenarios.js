@@ -1,10 +1,12 @@
 "use strict";
 // Alfred's web demo: what Alfred does with a command. No AI runs here. Simple commands take the fast
 // path, as in windows-mvp/jarvis/router.py (no "thinking", just the tool and its answer). Anything else
-// is matched to one of a few example tasks by forgiving keyword rules and played the way the real
-// engine reports a run: "thinking...", one status line per tool call with the real tool names and
-// arguments, approvals before anything that sends or submits, then the reply. demo-api.js turns these
-// into the app's events and activity log; desktop.js shows them on the simulated PC.
+// is matched to one of a few example tasks by keyword rules and played the way the real engine reports
+// a run: "thinking...", one status line per tool call with the real tool names and arguments, approvals
+// before anything that sends or submits, then the reply. A command that names a person, file, app or
+// channel the example doesn't have gets an honest "not here" instead of the nearest example.
+// demo-api.js turns these into the app's events and activity log; desktop.js shows them on the
+// simulated PC.
 
 (() => {
   const Demo = window.AlfredDemo = window.AlfredDemo || {};
@@ -20,6 +22,16 @@
   const pc = () => Demo.desktop;
   const clip = (text, n) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
   const pad = (n) => String(n).padStart(2, "0");
+  const both = (items) => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`);
+
+  // What the examples don't have: other ways to send, other people, files and apps.
+  const OTHER_CHANNEL = /\b(slack|teams|texts?|sms|whatsapp|imessage|messenger|discord|telegram|signal|dm|tweet|linkedin)\b/;
+  const OTHER_PEOPLE = /\b(boss|manager|team|everyone|everybody|clients?|customers?|mom|mum|dad|wife|husband|partner|friends?|colleagues?|co-?workers?|hr|jordan|cc|bcc)\b/;
+  const OTHER_FILES = /\b(budget|spreadsheet|notes?\.txt|photos?|pictures?|pics?|images?|videos?|music|songs?|folders?|everything|all (?:my |the )?files|\w+\.(?:txt|docx?|xlsx?|jpe?g|png|zip|mp[34]))\b/;
+  const OTHER_APPS = /\b(chrome|firefox|safari|opera|brave|word|excel|powerpoint|google|spotify|youtube|apple music|pandora|soundcloud|tidal|vlc)\b/;
+  const REPORT_NAMED = /\b(report|quarterly)\b/;
+  const NAMES = { youtube: "YouTube", vlc: "VLC", soundcloud: "SoundCloud", powerpoint: "PowerPoint" };
+  const appName = (word) => NAMES[word] || word.replace(/\b[a-z]/g, (c) => c.toUpperCase());
 
   // --- the fast path (router.py) ----------------------------------------------------------------------
   const WAKE = /^\s*(hey|ok|okay|yo)?[\s,]*(alfred|jarvis)\b[\s,.!?]*/i;
@@ -169,13 +181,23 @@
   async function notepad(r, said) {
     const wanted = noteFor(said);
     await r.think();
+    if (wanted.ask) {
+      r.reply("What should I type? For example: “Open Notepad and type: Call Sam at 3 pm”.");
+      return;
+    }
+    if (wanted.cant) {
+      r.reply("In this web demo I can't write that one. I can type your own words, a shopping, to-do or packing list, "
+        + "or a short poem. Try “Open Notepad and type: Call Sam at 3 pm”. The Windows app writes whatever you ask.");
+      return;
+    }
     await r.tool("open_app", { name: "Notepad" }, async () => { await pc().open("notepad"); return "Opened Notepad."; });
     await r.tool("ui_set_text", { window: "Notepad", text: wanted.text }, async () => {
       await pc().typeNotepad(wanted.text);
       return 'Set the text of Document "Text editor".';
     });
-    r.reply(wanted.literal ? `Done. Notepad is open and says: “${clip(wanted.text, 160)}”`
-      : `Done. Notepad is open with ${wanted.label}: ${wanted.items}.`);
+    const unsaved = wanted.save ? " I didn't save it: saving files isn't part of this demo." : "";
+    r.reply(wanted.literal ? `Done. Notepad is open and says: “${clip(wanted.text, 160)}”${unsaved ? `.${unsaved}` : ""}`
+      : `Done. Notepad is open with ${wanted.label}: ${wanted.items}.${unsaved}`);
   }
 
   const LISTS = {
@@ -183,24 +205,53 @@
     packing: ["a packing list", "Packing list", ["Passport", "Phone charger", "Toothbrush", "Rain jacket", "Snacks"]],
     shopping: ["a shopping list", "Shopping list", ["Bananas", "Rice", "Spinach", "Olive oil", "Dark chocolate"]],
   };
+  const HAIKU = "Blue sky through the glass,\nAlfred types while you sit back.\nOne STOP, and it rests.";
+  // What to type. Words after "type:" (with the colon) or in quotes go in as they are. Without a colon, a few
+  // requests have text ready (a list, a poem); asking for any other writing gets a "can't" (no AI here), and
+  // anything else is typed as it was said.
   function noteFor(said) {
+    const literal = (text) => ({ literal: true, text: text.trim() });
     const quoted = /["“]([^"”]+)["”]/.exec(said);
-    if (quoted) return { literal: true, text: quoted[1].trim() };
-    const m = /\b(?:type|write|saying|that says|put|jot down|jot|note down|with the text)\b\s*:?\s*(.+)$/i.exec(said);
-    const asked = m ? trim(m[1]) : "";
-    if (asked && !/^(?:me )?(?:a|an|my|some|the|something|anything|stuff|it)\b/i.test(asked)) return { literal: true, text: asked };
-    if (/\bhaiku|poem\b/i.test(said)) {
-      return { literal: true, text: "Blue sky through the glass,\nAlfred types while you sit back.\nOne STOP, and it rests." };
+    if (quoted) return literal(quoted[1]);
+    // "type: …", "Type my address in Notepad: 12 Oak Street". Not the colon in "3:30".
+    const colon = /\b(?:type|write|put|jot|paste|enter|add|note ?pad|saying|says)\b[^:]*:(?!\d)\s*(.+)$/i.exec(said);
+    if (colon && trim(colon[1])) return literal(colon[1]);
+    const m = /\b(?:saying|that says|that reads|with the text)\b\s*(.+)$/i.exec(said)
+      || /\b(?:type|write|put|jot down|jot|note down|paste|enter)\b\s*(.*)$/i.exec(said);
+    let asked = m ? trim(m[1]) : "";
+    const save = /(?:,?\s+(?:and\s+)?(?:then\s+)?save(?:\s+(?:it|the file|that))?(?:\s+as\s+.+)?)$/i;
+    const wantsSave = save.test(asked);
+    asked = trim(asked.replace(save, "").replace(/\s+(?:in|into|on)\s+(?:the\s+|a\s+|my\s+)?(?:note ?pad|a note)$/i, ""));
+    const ready = (wanted) => ({ ...wanted, save: wantsSave });
+    const kindOf = (name) => (/^to-?do/i.test(name || "") ? "todo" : /^packing/i.test(name || "") ? "packing" : "shopping");
+    if (!asked) { // "make a to-do list", "take a note": no words to type
+      const named = /\b(?:(shopping|grocery|groceries|to-?do|todo|packing)\s+)?list\b/i.exec(said);
+      if (named) return ready(list(kindOf(named[1])));
+      return /\b(?:poem|haiku)\b/i.test(said) ? ready(literal(HAIKU)) : { ask: true };
     }
-    const kind = /to-?do/i.test(said) ? "todo" : /packing|pack/i.test(said) ? "packing" : "shopping";
+    if (/^(?:me\s+)?(?:something|anything|stuff|(?:a\s+|some\s+)?(?:quick\s+)?notes?)$/i.test(asked)) return ready(list("shopping"));
+    const kind = /^(?:me\s+)?(?:a|an|my|some|the|our)?\s*(?:(shopping|grocery|groceries|to-?do|todo|packing)\s+)?list\b/i.exec(asked);
+    if (kind) return ready(list(kindOf(kind[1])));
+    if (/^(?:me\s+)?(?:a|an|some)?\s*(?:short\s+|little\s+)?(?:poem|haiku)\b/i.test(asked)) return ready(literal(HAIKU));
+    // "a letter to Grandma", "something funny", "it": writing that (or knowing what "it" is) needs Claude
+    if (/^(?:me\s+)?(?:a|an|some|something|anything)\s|^(?:it|that|this|them)$/i.test(asked)) return { cant: true };
+    return ready(literal(asked));
+  }
+  function list(kind) {
     const [label, heading, items] = LISTS[kind];
-    const text = `${heading}\n${items.map((item) => `- ${item}`).join("\n")}`;
-    return { literal: false, text, label, items: `${items.slice(0, -1).join(", ").toLowerCase()} and ${items[items.length - 1].toLowerCase()}` };
+    return { literal: false, text: `${heading}\n${items.map((item) => `- ${item}`).join("\n")}`, label,
+      items: both(items.map((item) => item[0].toLowerCase() + item.slice(1))) }; // "call Mom", not "call mom"
   }
 
   async function music(r, said, low) {
     const p = pc();
     await r.think();
+    const app = OTHER_APPS.exec(low);
+    if (app) {
+      r.reply(`There's no ${appName(app[0])} on this simulated PC: it plays music in Media Player. `
+        + "Try “Play some music and set the volume to 30%”. The Windows app uses the apps on your PC.");
+      return;
+    }
     if (!p.isOpen("player")) {
       await r.tool("open_app", { name: "Media Player" }, async () => { await p.open("player"); return "Opened Media Player."; });
     }
@@ -271,11 +322,23 @@
     return p.title(key);
   }
 
-  async function email(r) {
+  // The email example: Sam (who asked for it in the inbox) gets the quarterly report, in Outlook. Only that.
+  async function email(r, said, low) {
     const p = pc();
     const message = "Hi Sam,\n\nHere's the quarterly report you asked for. It's attached.\n\nBest,\nAlex";
     const draft = "Quarterly report - Message";
     await r.think();
+    const elsewhere = OTHER_CHANNEL.exec(low) || OTHER_APPS.exec(low);
+    if (elsewhere || OTHER_PEOPLE.test(low) || OTHER_FILES.test(low) || !REPORT_NAMED.test(low)) {
+      // Just "email Sam": ask what to send, as Claude would.
+      const bare = !elsewhere && !low.replace(/\b(?:write|send|compose|draft|e-?mail|mail|message|an?|to|sam)\b|[^a-z]+/g, "");
+      r.reply(bare ? "What should the email to Sam say? In this web demo I can send the quarterly report Sam asked for: "
+        + "try “Email Sam the quarterly report”."
+        : `In this web demo I can only email Sam the quarterly report${elsewhere ? `, in Outlook` : ""}, so I can't do that one `
+          + "here. Try “Email Sam the quarterly report”. The Windows app writes any email or message you ask for, and asks "
+          + "before it sends.");
+      return;
+    }
     r.text("I'll find the report, write the email in Outlook, and ask you before it goes out.");
     await r.tool("ui_read_text", { window: "File Explorer" }, async () => {
       await p.focus("explorer");
@@ -315,12 +378,18 @@
     r.reply(`Sent. Sam has the quarterly report (${REPORT.name}, ${REPORT.size}).`);
   }
 
-  async function copyToLaptop(r) {
+  // The copy example: the quarterly report, from this PC's Documents to the laptop's Downloads. Only that file.
+  async function copyToLaptop(r, said, low) {
     const p = pc();
     const here = Demo.server ? Demo.server.status().pc_name : "Desktop";
     const dest = `C:\\Users\\Alex\\Downloads\\${REPORT.name}`;
     const args = { from_pc: here, from_path: `${DOCS}\\${REPORT.name}`, to_pc: "Laptop", to_path: "%USERPROFILE%\\Downloads\\" };
     await r.think();
+    if (!REPORT_NAMED.test(low) || OTHER_FILES.test(low)) {
+      r.reply("In this web demo the only file I can copy to your laptop is the quarterly report, so I can't do that one here. "
+        + "Try “Copy the quarterly report to my laptop”. The Windows app copies any file you ask for between your PCs.");
+      return;
+    }
     r.text("I'll copy it from your Documents folder to Downloads on your laptop.");
     let refused = false;
     const copied = await r.tool("copy_file", args, async () => {
@@ -340,15 +409,32 @@
         await p.selectFile(REPORT.name);
       },
     });
-    setTimeout(() => p.showMachine("desktop"), 3500);
+    p.showMachine("desktop", 3500);
     if (copied.declined) r.reply("Okay, I won't copy it.");
     else if (refused) r.reply("Your laptop didn't take the file: nobody there approved saving it. Nothing was copied.");
     else r.reply(`Done. ${REPORT.name} is in the Downloads folder on your laptop. Alfred on the laptop asked there first, and it was allowed.`);
   }
 
-  async function form(r) {
+  // The computer use example: the meetup's sign-up form in Edge, a page that draws its own form. Only that form.
+  const OUR_FORM = new Set(["the", "a", "this", "that", "my", "in", "out", "up", "signup", "meetup", "registration", "web",
+    "online", "edge", "contoso", "events"]);
+  async function form(r, said, low) {
     const p = pc();
     await r.think();
+    const named = /\b([a-z]+)[\s-]+forms?\b/.exec(low); // "tax form", "the sign-up form"
+    const signFor = /\bsign[- ]?up\s+for\s+(?:the\s+|a\s+|this\s+|that\s+|an\s+)?([a-z]+)/.exec(low);
+    if ((named && !OUR_FORM.has(named[1])) || (signFor && !/^(meetup|event|aero|contoso|it)$/.test(signFor[1]))
+      || OTHER_APPS.test(low)) {
+      r.reply("In this web demo the only form I can fill in is the meetup's sign-up form in Edge, so I can't do that one "
+        + "here. Try “Fill in the sign-up form in Edge and click Submit”. The Windows app fills in forms in any app.");
+      return;
+    }
+    // As in the real app: with computer use off, Claude has no screenshot, mouse or keyboard tools.
+    if (Demo.server && !Demo.server.computerUse()) {
+      r.reply("I can't fill in that form with computer use turned off. The page draws its own form, so I'd have to look "
+        + "at the screen and use the mouse and keyboard. Turn on Computer use in Settings, then ask again.");
+      return;
+    }
     if (!p.edDone.hidden) p.resetForm(); // a new sign-up form each time, so the demo can be tried again
     await r.tool("focus_window", { window: "Edge" }, async () => { await p.focus("edge"); return `Switched to "${p.title("edge")}".`; });
     r.text("This page draws its own form, so I'll look at the screen and use the mouse.");
@@ -394,7 +480,8 @@
     const task = /\bremind me\s+(?:to|about|that)?\s*(.+)$/i.exec(said);
     let what = task ? task[1] : "";
     if (when) what = what.replace(when[0], "");
-    what = trim(what).replace(/\s+(?:in|at|after)$/i, "");
+    // "remind me in 2 hours to call mom": the "to" comes after the time
+    what = trim(what).replace(/\s+(?:in|at|after)$/i, "").replace(/^(?:to|about|that)\s+/i, "");
     await r.think();
     if (!when) {
       r.reply(what ? `When should I remind you to ${what}? For example: in 10 minutes.` : "When should it go off? For example: in 10 minutes.");
@@ -421,6 +508,32 @@
       + "The Windows app does whatever you ask, on your own PC.");
   }
 
+  // The laptop only shows files arriving from this PC.
+  async function laptopOnly(r) {
+    await r.think();
+    r.reply("In this web demo your laptop only receives files from this PC, so I can't do that one there. Try “Copy the "
+      + "quarterly report to my laptop”. The Windows app does anything you ask on any of your PCs.");
+  }
+
+  // close_window found no such window: say so, instead of guessing.
+  async function closeMissing(r, target) {
+    const p = pc();
+    const open = p.list().filter((w) => w.key !== "alfred").map((w) => p.name(w.key));
+    const now = open.length ? ` Open now: ${both(open)}.` : " Only my window is open.";
+    const key = p.findApp(target);
+    await r.think();
+    if (/^(?:all|every|everything)\b/.test(target)) r.reply(`In this web demo I close one window at a time, like “close notepad”.${now}`);
+    else if (key) r.reply(`${p.name(key)} isn't open, so there's nothing to close.${now}`);
+    else r.reply(`There's no “${target}” window on the simulated PC.${now}`);
+  }
+
+  // open_app found no such app: the simulated PC's apps, honestly.
+  async function noSuchApp(r, name) {
+    await r.think();
+    r.reply(`There's no ${appName(name.replace(/^(?:the|my|an?)\s+/, ""))} on this simulated PC. It has ${both(pc().apps())}. `
+      + "The Windows app opens any app on your PC.");
+  }
+
   let turn = 0;
   function tryThese() {
     const picks = [0, 1, 2].map((i) => EXAMPLES[(turn * 3 + i) % EXAMPLES.length]);
@@ -428,17 +541,26 @@
     return `Try “${picks[0]}”, “${picks[1]}” or “${picks[2]}”.`;
   }
 
-  // Order matters: the first rule that fits wins.
+  const LAPTOP = /\b(laptop|other (pc|computer))\b/;
+  const TYPING = /\b(type|write|put|jot|paste|enter|add)\b|:(?!\d)/;
+  // Order matters: the first rule that fits wins. Each example checks the details itself (who, which file,
+  // which app) and says when it can't do that one here.
   const RULES = [
-    [/\b(laptop|other (pc|computer))\b/, copyToLaptop, (t) => /\b(copy|send|move|put|transfer|share|get)\b/.test(t)],
-    [/\b(e-?mail|mail|send)\b/, email, (t) => /\b(sam|report)\b/.test(t)],
-    [/\b(click|submit|sign[- ]?up|form|fill(ed)? (in|out)|computer use)\b/, form],
+    // sending, deleting, buying and posting: none of the examples
+    [/^(delete|remove|erase|wipe|uninstall|install|format|shut ?down|restart|reboot|log ?off|sign out|buy|order|purchase|pay|post|tweet)\b/, unknown],
+    [/^(remind me|set (an? )?(reminder|timer|alarm))\b/, remind],
+    [LAPTOP, copyToLaptop, (t) => /\b(copy|send|move|put|transfer|share|get|save)\b/.test(t)],
+    [LAPTOP, laptopOnly],
+    [/\bnote ?pad\b/, notepad, (t) => TYPING.test(t)],
+    [/\b(e-?mail|mail|send|forward|message)\b/, email, (t) => /\bsam\b/.test(t)],
+    [/\b(forms?|sign[- ]?up|signup|meetup|computer use)\b/, form],
     [/\b(remind|reminder|timer|alarm)\b/, remind],
-    [/\bnote ?pad\b/, notepad],
-    [/\b(cpu|processor|memory|ram|battery|slow|performance|task manager|resources?)\b|\bhow('s| is| are)\b.*\b(pc|computer|laptop|system|machine)\b|\b(pc|computer)('s)? (doing|health|status)\b/, health],
+    [/\b(cpu|processor|memory|ram|battery|slow|performance|task manager|resources?)\b|\bhow('s| is| are)\b.*\b(pc|computer|system|machine)\b|\b(pc|computer)('s)? (doing|health|status)\b/, health],
     [/\bscreen\b|\bwindows?\b|\bwhat('s| is| are)? (open|running)\b|\bwhat am i (looking at|doing)\b/, screen],
-    [/\b(music|song|songs|track|playlist|spotify|volume|louder|quieter|softer|mute|unmute|pause|play|playing|skip)\b/, music],
-    [/\b(notes?|type|write|jot|shopping list|to-?do list|list)\b/, notepad],
+    [/\b(music|song|songs|track|playlist|volume|louder|quieter|softer|mute|unmute|pause|play|playing|skip)\b/, music],
+    // a note, without naming Notepad; not an email or a message (those are someone else's to read)
+    [/\b(type|write|jot|note down|take (a )?note|make (a |me )?(note|list))\b|\b(shopping|grocery|to-?do|packing) list\b/, notepad,
+      (t) => !/\b(e-?mail|message|text|tweet|post|reply)\b/.test(t)],
     // clean() has already taken "can you" out of "what can you do"
     [/^(hi|hello|hey|good (morning|afternoon|evening)|thanks|thank you|help|what (?:you )?do|who are you)\b/, greet],
   ];
@@ -450,11 +572,16 @@
       r.reply("Okay, fresh start.");
       return true;
     }
+    pc().showMachine("desktop"); // what happens next happens here (copyToLaptop brings the laptop forward)
     const fast = route(text);
     if (fast && FAST[fast[0]]) {
       const out = await FAST[fast[0]](r, fast[1]);
       if (out !== null) {
         r.reply(out);
+        return true;
+      }
+      if (fast[0] === "close_window") {
+        await closeMissing(r, fast[1].window);
         return true;
       }
     }
@@ -464,7 +591,8 @@
         return true;
       }
     }
-    await unknown(r);
+    if (fast && fast[0] === "open_app") await noSuchApp(r, fast[1].name);
+    else await unknown(r);
     return true;
   }
 

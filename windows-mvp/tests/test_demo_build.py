@@ -1,4 +1,4 @@
-"""The web demo's build (demo/build.py, task K13): both copies are made, every change the copies of
+"""The web demo's build (demo/build.py, task M4): both copies are made, every change the copies of
 the app's UI need is applied, the artifact's main page is one its host can wrap, nothing points at
 another site, and the app's CSS lets a page choose light or dark with data-theme. The build only
 writes into a temporary folder, so this runs anywhere (Linux, and Windows in CI)."""
@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 BUILD = ROOT / "demo" / "build.py"
 UI = ROOT / "windows-mvp" / "jarvis" / "app" / "ui"
 REPO = "https://github.com/DhruvaValluru/Jarvis-Hacks"
-ALLOWED = {REPO, f"{REPO}/releases/latest"}
+ALLOWED = {REPO, f"{REPO}/tree/main/windows-mvp#readme"}  # the source, and how to install on Windows
 URL = re.compile(r"""https?://[^\s"'<>()\\`]+""")
 
 pytestmark = pytest.mark.skipif(not BUILD.is_file(), reason="demo/ isn't in this checkout")
@@ -104,7 +104,7 @@ def test_nothing_points_at_another_site(built):
             for forbidden in ("window.open(", "mailto:", "serviceWorker"):
                 assert forbidden not in body, f"{page.relative_to(built)}: {forbidden}"
             assert not re.search(r"\b(?:alert|confirm|prompt)\s*\(", body), page
-    assert found == ALLOWED  # the banner links the download and the source
+    assert found == ALLOWED  # the banner links how to install and the source
     setup = text(built / "site" / "onboarding" / "index.html")
     assert "console.anthropic.com" in setup and 'class="aero-link demo-nolink"' in setup  # named, not linked
 
