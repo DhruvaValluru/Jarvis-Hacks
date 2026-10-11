@@ -6,10 +6,16 @@ server, next to a **simulated PC**: a small pretend Windows desktop, plus a lapt
 type or click a command, and you see what Alfred does: the same status lines, approvals, replies and
 activity log as the Windows app, while the simulated PC shows the work.
 
-It never touches the viewer's computer. A banner says so on every page, and links to the
-[Windows download](https://github.com/DhruvaValluru/Jarvis-Hacks/releases/latest) and the
-[source](https://github.com/DhruvaValluru/Jarvis-Hacks). There is no AI behind it: each command is matched
-to one of a few scripted examples. Anything else gets an honest answer and three examples to try.
+It never touches the viewer's computer. A banner says so on every page, and links to
+[how to install Alfred on Windows](https://github.com/DhruvaValluru/Jarvis-Hacks/tree/main/windows-mvp#readme)
+and the [source](https://github.com/DhruvaValluru/Jarvis-Hacks). (The install link goes to the README, not to
+`/releases/latest`, until there is a release: until then that is an empty page.) There is no AI behind it:
+each command is matched to one of a few scripted examples. A command that names someone, a file, an app or a
+form the example doesn't have (email my boss, copy my photos, fill in my tax form, open Chrome) gets an honest
+"I can't do that one here" instead of the nearest example, and so does anything else, with examples to try.
+
+**It isn't online yet.** Nothing is published until someone publishes it (see [Publish](#publish)), and
+there is no link to give out before that.
 
 ## Build and preview
 
@@ -22,11 +28,21 @@ python3 -m http.server 8000      # then open http://localhost:8000/
 Python 3 only, no packages. `--out DIR` writes somewhere else. The build stops with a message if the
 app's UI changed in a way the demo doesn't expect (see below), instead of making a broken demo.
 
-- **`dist/site/`** is a static site for GitHub Pages, served from a subpath
-  (`https://dhruvavalluru.github.io/Jarvis-Hacks/`), so every URL in it is relative. It has a `.nojekyll`.
+- **`dist/site/`** is a static site for GitHub Pages, which serves it from a subpath (`/Jarvis-Hacks/`), so
+  every URL in it is relative. It has a `.nojekyll`.
 - **`dist/artifact/`** is the same demo for a claude.ai artifact. Its `index.html` has no `<!doctype>`,
   `<html>`, `<head>` or `<body>` (the host wraps it) and starts with `<title>Alfred Live Demo</title>`.
   Publish the other files next to it at the same paths. It makes no requests to other sites.
+
+## Publish
+
+Either way, open the link in a private window (signed out) and try a few examples before you share it.
+
+- **GitHub Pages:** a workflow runs `python3 demo/build.py` and puts `demo/dist/site/` on Pages, and the repo
+  owner turns Pages on once (Settings > Pages). Workflows are area G's (`docs/TASKS.md`), so that is its own
+  PR. The address is then `https://dhruvavalluru.github.io/Jarvis-Hacks/`.
+- **claude.ai artifact:** publish `demo/dist/artifact/index.html` as the page, with every other file in
+  `demo/dist/artifact/` at the same path next to it. It starts private; share it to give out the link.
 
 Light and dark follow the system. A host can choose with `data-theme="light"` or `"dark"` on `<html>`;
 the app's own CSS honours that too, and without the attribute it looks exactly as before.
@@ -43,11 +59,13 @@ The banner's buttons send these, one click each:
 | What's on my screen? | `list_windows`, `screenshot`: the reply describes the simulated desktop |
 | Email Sam the quarterly report | finds the file, writes the email in Outlook (`ui_click`, `ui_set_text`), then asks: **Allow** sends it, **Deny** doesn't, no answer in 60 s means no |
 | Copy the report to my laptop | `copy_file` asks here, then Alfred on the laptop asks its own user (you may answer on the laptop, or its "user" allows it) |
-| Fill in a form | computer use: `screenshot`, `left_click` and `type` with a visible pointer, then asks before clicking Submit |
+| Fill in a form | computer use: `screenshot`, `left_click` and `type` with a visible pointer, then asks before clicking Submit. With Computer use off in Settings (or the setup's Safety step), it says it can't, as the real app does without those tools |
 | Remind me in 10 seconds | `set_timer`, then the reminder arrives (long timers come after 8 s, and the log says so) |
 
 Simple commands take the fast path, as in `jarvis/router.py` ("open notepad", "volume 30", "next song",
-"what time is it", "what's open", "timer 5 seconds"). **STOP** (or Esc then Enter, or Ctrl+Alt+Backspace)
+"what time is it", "what's open", "timer 5 seconds"); an app the simulated PC doesn't have ("open chrome")
+gets "There's no Chrome on this simulated PC". Words after "type:" (with the colon) or in quotes are typed
+as they are. **STOP** (or Esc then Enter, or Ctrl+Alt+Backspace)
 stops a run at once, like the real hard stop, and Alfred is ready again a moment later. Commands sent
 while one runs wait their turn. **Replay the setup** opens the real 10-step setup on a new simulated PC:
 any key in the right shape is accepted (nothing you paste leaves the tab), the speech model download
@@ -80,8 +98,11 @@ from `windows-mvp/PRIVACY.md`.
 - `demo/tests/e2e.mjs` is a local tool that drives the built demo in headless Chromium, served under a
   subpath: every example, Allow, Deny and an expired approval, STOP mid-run, two commands in a row,
   Settings, Activity, the setup replayed to the end and back, and the artifact copy with a host's theme,
-  at 1280x800 and 400x800 in light and dark. It fails on any console error, failed request or request to
-  another site.
+  at 1280x800 and 400x800 in light and dark. Also: typed commands that only half match an example (each
+  must get an honest answer, with no approval), computer use turned off, STOP while Outlook types, the
+  conversation following new replies after Activity or the panel's Hide and Show, STOP never covered by an
+  approval, and the banner out of Tab's way while one is open. It fails on any console error, failed
+  request or request to another site.
 
   ```
   node demo/tests/e2e.mjs --shots /tmp/alfred-demo-shots
