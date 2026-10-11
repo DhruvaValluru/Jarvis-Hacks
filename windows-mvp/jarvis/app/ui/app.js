@@ -205,6 +205,7 @@
     }
     switch (event.type) {
       case "command":
+        if (event.source === "desktop") following = true;  // sent from here: show it and what follows
         say("you", event.text, YOU[event.source] || `You, from ${place(event.source)}`);
         break;
       case "reply":
@@ -268,11 +269,22 @@
     }
   }
 
+  // The conversation follows new entries while it is scrolled to the end. That is noted when the reader
+  // scrolls, not measured when an entry arrives: then the log may be hidden (another page is open) or
+  // just made shorter, and would measure as scrolled up.
+  let following = true;
+  log.addEventListener("scroll", () => {
+    if (log.clientHeight) following = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+  });
+  function toEnd() {
+    if (following) log.scrollTop = log.scrollHeight;
+  }
+  if (window.ResizeObserver) new ResizeObserver(toEnd).observe(log);
+
   function append(node) {
-    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
     log.append(node);
     $("empty").hidden = true;
-    if (atBottom) log.scrollTop = log.scrollHeight;
+    toEnd();
     return node;
   }
 
@@ -953,7 +965,10 @@
     for (const view of document.querySelectorAll(".view")) view.hidden = view.id !== `view-${name}`;
     if (name === "settings") loadSettings();
     if (name === "activity") loadAudit();
-    if (name === "home") input.focus();
+    if (name === "home") {
+      toEnd();  // what arrived while another page was open
+      input.focus();
+    }
   }
 
   function wire() {

@@ -24,12 +24,18 @@
   --header: 64px;
 }
 
+/* Dark mode, or data-theme="dark" on <html> (see theme/aero.css). Keep both blocks the same. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --surface-2: rgba(140, 210, 255, 0.1);
     --you: linear-gradient(to bottom, #1d5a86, #123f63);
     --you-border: #2c6a96;
   }
+}
+:root[data-theme="dark"] {
+  --surface-2: rgba(140, 210, 255, 0.1);
+  --you: linear-gradient(to bottom, #1d5a86, #123f63);
+  --you-border: #2c6a96;
 }
 
 * { box-sizing: border-box; }
